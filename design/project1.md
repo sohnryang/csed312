@@ -174,6 +174,22 @@ thread_create (const char *name, int priority,
 
 주어진 함수 `function`에 인자 `aux`를 주어 실행하는 스레드를 생성하고, 실행 가능한 상태가 되도록 `thread` 구조체의 각종 필드를 초기화한다. `thread_unblock` 함수를 사용하여 ready list에 생성된 스레드를 넣은 다음 생성된 스레드의 thread id를 반환한다.
 
+##### `thread_block`
+
+```c
+void
+thread_block (void)
+{
+  ASSERT (!intr_context ());
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  thread_current ()->status = THREAD_BLOCKED;
+  schedule ();
+}
+```
+
+현재 스레드의 상태를 `THREAD_BLOCKED`로 설정하고, `schedule` 함수를 실행한다. 인터럽트 처리 도중에 스레드를 block시킬 경우 OS 자체를 멈추는 결과를 일으킬 수 있기 때문에, `ASSERT`를 통해 인터럽트 처리 중 이 함수가 실행될 경우 커널 패닉이 일어나게 한다.
+
 ### Synchronization Primitives
 
 ## Design Plan
