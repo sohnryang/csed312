@@ -190,6 +190,26 @@ thread_block (void)
 
 현재 스레드의 상태를 `THREAD_BLOCKED`로 설정하고, `schedule` 함수를 실행한다. 인터럽트 처리 도중에 스레드를 block시킬 경우 OS 자체를 멈추는 결과를 일으킬 수 있기 때문에, `ASSERT`를 통해 인터럽트 처리 중 이 함수가 실행될 경우 커널 패닉이 일어나게 한다.
 
+##### `thread_unblock`
+
+```c
+void
+thread_unblock (struct thread *t)
+{
+  enum intr_level old_level;
+
+  ASSERT (is_thread (t));
+
+  old_level = intr_disable ();
+  ASSERT (t->status == THREAD_BLOCKED);
+  list_push_back (&ready_list, &t->elem);
+  t->status = THREAD_READY;
+  intr_set_level (old_level);
+}
+```
+
+현재 스레드의 상태를 `THREAD_READY`로 설정하고, `ready_list`에 추가한다. 앞서 설명했듯, `ready_list`를 변경하는 도중 인터럽트가 발생하지 않도록 인터럽트를 비활성화했다가 다시 활성화하는 것을 볼 수 있다.
+
 ### Synchronization Primitives
 
 ## Design Plan
