@@ -293,6 +293,64 @@ thread_schedule_tail (struct thread *prev)
 
 현재 스레드의 상태를 `THREAD_RUNNING`으로 바꾸고, `thread_ticks`를 0으로 초기화한다. 이전 스레드가 핀토스가 최초로 실행한 스레드(`initial_thread`)가 아니면서 `THREAD_DYING` 상태일 경우 이전 스레드를 정리한다.
 
+##### `switch_threads`
+
+```assembly
+.globl switch_threads
+.func switch_threads
+switch_threads:
+	# Save caller's register state.
+	#
+	# Note that the SVR4 ABI allows us to destroy %eax, %ecx, %edx,
+	# but requires us to preserve %ebx, %ebp, %esi, %edi.  See
+	# [SysV-ABI-386] pages 3-11 and 3-12 for details.
+	#
+	# This stack frame must match the one set up by thread_create()
+	# in size.
+	pushl %ebx
+	pushl %ebp
+	pushl %esi
+	pushl %edi
+
+	# Get offsetof (struct thread, stack).
+.globl thread_stack_ofs
+	mov thread_stack_ofs, %edx
+
+	# Save current stack pointer to old thread's stack, if any.
+	movl SWITCH_CUR(%esp), %eax
+	movl %esp, (%eax,%edx,1)
+
+	# Restore stack pointer from new thread's stack.
+	movl SWITCH_NEXT(%esp), %ecx
+	movl (%ecx,%edx,1), %esp
+
+	# Restore caller's register state.
+	popl %edi
+	popl %esi
+	popl %ebp
+	popl %ebx
+        ret
+.endfunc
+
+.globl switch_entry
+.func switch_entry
+switch_entry:
+	# Discard switch_threads() arguments.
+	addl $8, %esp
+
+	# Call thread_schedule_tail(prev).
+	pushl %eax
+.globl thread_schedule_tail
+	call thread_schedule_tail
+	addl $4, %esp
+
+	# Start thread proper.
+	ret
+.endfunc
+```
+
+어셈블리어로 작성된 함수로, 편의상 첫 번째로 주어진 인자를 `cur`, 두 번째로 주어진 인자를 `next`라고 하자. 스택에 현재 실행 중인 스레드 `cur`의 레지스터와 스택 포인터를 저장하고, 다음에 실행될 스레드 `next`의 스택에서 스택 포인터, 레지스터 값을 복구해 온다. `switch_threads` 함수는 핀토스에서 스레드 사이를 오갈 수 있는 유일한 통로 역할을 한다.
+
 ### Synchronization Primitives
 
 ## Design Plan
