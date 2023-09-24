@@ -55,6 +55,51 @@ enum thread_status
 
 핀토스의 스레드 시스템에서는 모든 스레드를 모아 놓은 리스트인 `all_list`와 THREAD_READY 상태인 스레드를 모아 놓은 `ready_list` 두 개의 리스트를 관리하면서 스레드를 추가, 삭제하고 스케줄링한다.
 
+#### Thread-Related Functions
+
+##### `thread_init`
+
+```c
+void
+thread_init (void)
+{
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  lock_init (&tid_lock);
+  list_init (&ready_list);
+  list_init (&all_list);
+
+  /* Set up a thread structure for the running thread. */
+  initial_thread = running_thread ();
+  init_thread (initial_thread, "main", PRI_DEFAULT);
+  initial_thread->status = THREAD_RUNNING;
+  initial_thread->tid = allocate_tid ();
+}
+```
+
+thread id 할당을 위한 `lock`, `tid_lock` 초기화, ready list와 전체 스레드 리스트를 초기화한 다음, 메인 스레드를 생성한다.
+
+##### `thread_start`
+
+```c
+void
+thread_start (void)
+{
+  /* Create the idle thread. */
+  struct semaphore idle_started;
+  sema_init (&idle_started, 0);
+  thread_create ("idle", PRI_MIN, idle, &idle_started);
+
+  /* Start preemptive thread scheduling. */
+  intr_enable ();
+
+  /* Wait for the idle thread to initialize idle_thread. */
+  sema_down (&idle_started);
+}
+```
+
+idle thread를 생성하고, 인터럽트를 활성화한다. Idle thread가 생성됨을 확인한 다음 함수를 종료하기 위해 `idle_started` 세마포어를 사용한다.
+
 ### Synchronization Primitives
 
 ## Design Plan
