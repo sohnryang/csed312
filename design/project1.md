@@ -351,6 +351,28 @@ switch_entry:
 
 어셈블리어로 작성된 함수로, 편의상 첫 번째로 주어진 인자를 `cur`, 두 번째로 주어진 인자를 `next`라고 하자. 스택에 현재 실행 중인 스레드 `cur`의 레지스터와 스택 포인터를 저장하고, 다음에 실행될 스레드 `next`의 스택에서 스택 포인터, 레지스터 값을 복구해 온다. `switch_threads` 함수는 핀토스에서 스레드 사이를 오갈 수 있는 유일한 통로 역할을 한다.
 
+##### `schedule`
+
+```c
+static void
+schedule (void)
+{
+  struct thread *cur = running_thread ();
+  struct thread *next = next_thread_to_run ();
+  struct thread *prev = NULL;
+
+  ASSERT (intr_get_level () == INTR_OFF);
+  ASSERT (cur->status != THREAD_RUNNING);
+  ASSERT (is_thread (next));
+
+  if (cur != next)
+    prev = switch_threads (cur, next);
+  thread_schedule_tail (prev);
+}
+```
+
+현재 스레드의 상태가 `THREAD_RUNNING`에서 다른 것으로 바뀌었을 때, 다른 스레드가 실행될 수 있도록 스케줄링을 수행한다. `schedule` 함수는 `switch_threads` 함수를 실행하여 현재 (상태가 `THREAD_RUNNING`이 아니게 된) 스레드 `cur`에서 다음에 실행될 스레드 `next`로 전환한다. 이후 control flow는 `next` 스레드로 넘어가는데, 앞서 설명했듯 스레드 사이를 오갈 수 있는 유일한 통로는 `switch_threads` 함수이고, 이 함수를 호출하는 부분은 `schedule` 함수뿐이기 때문에 `next` 스레드의 실행은 `prev = switch_threads (cur, next)`에서 이어지게 된다. 여기서 `next` 스레드는 이전에 실행되고 있던 `cur` 스레드를 반환받고, `cur` 스레드에 대해 `thread_schedule_tail` 함수를 실행해 스레드 전환을 마무리한다.
+
 ### Synchronization Primitives
 
 ## Design Plan
