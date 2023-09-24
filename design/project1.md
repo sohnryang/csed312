@@ -100,6 +100,32 @@ thread_start (void)
 
 idle thread를 생성하고, 인터럽트를 활성화한다. Idle thread가 생성됨을 확인한 다음 함수를 종료하기 위해 `idle_started` 세마포어를 사용한다.
 
+##### `thread_tick`
+
+```c
+void
+thread_tick (void)
+{
+  struct thread *t = thread_current ();
+
+  /* Update statistics. */
+  if (t == idle_thread)
+    idle_ticks++;
+#ifdef USERPROG
+  else if (t->pagedir != NULL)
+    user_ticks++;
+#endif
+  else
+    kernel_ticks++;
+
+  /* Enforce preemption. */
+  if (++thread_ticks >= TIME_SLICE)
+    intr_yield_on_return ();
+}
+```
+
+타이머 인터럽트에 의해 실행되는 함수이다. 현재 실행 중인 스레드가 idle thread인지, 아닌지에 따라 구분하여 `idle_ticks` 혹은 `kernel_ticks` 변수를 증가시킨다. 또한 `thread_ticks`를 증가시킨 뒤 `TIME_SLICE` 이상 지났는지 확인하여 일정 주기마다 `thread_yield`를 실행되도록 만든다. 이때 `thread_yield` 대신 `intr_yield_on_return`을 사용하는 이유는 `thread_tick` 함수가 타이머 인터럽트에 의해 실행되는 함수이기 때문이다. 인터럽트 도중에 스레드를 sleep 시킬 수 없기 때문에, 인터럽트의 처리가 끝난 후에 `thread_yield`가 실행되도록 한다.
+
 ### Synchronization Primitives
 
 ## Design Plan
