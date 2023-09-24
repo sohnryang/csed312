@@ -210,6 +210,31 @@ thread_unblock (struct thread *t)
 
 현재 스레드의 상태를 `THREAD_READY`로 설정하고, `ready_list`에 추가한다. 앞서 설명했듯, `ready_list`를 변경하는 도중 인터럽트가 발생하지 않도록 인터럽트를 비활성화했다가 다시 활성화하는 것을 볼 수 있다.
 
+##### `thread_exit`
+
+```c
+void
+thread_exit (void)
+{
+  ASSERT (!intr_context ());
+
+#ifdef USERPROG
+  process_exit ();
+#endif
+
+  /* Remove thread from all threads list, set our status to dying,
+     and schedule another process.  That process will destroy us
+     when it calls thread_schedule_tail(). */
+  intr_disable ();
+  list_remove (&thread_current ()->allelem);
+  thread_current ()->status = THREAD_DYING;
+  schedule ();
+  NOT_REACHED ();
+}
+```
+
+현재 스레드를 `all_list`에서 제거하고, 상태를 `THREAD_DYING`으로 설정한 다음 `schedule` 함수를 실행한다. 앞서 설명했듯, `all_list`를 변경하는 도중 인터럽트가 발생하지 않도록 인터럽트를 비활성화했다가 다시 활성화하는 것을 볼 수 있다. 인터럽트 처리 도중 스레드를 종료시킬 경우 OS 자체를 멈추는 결과를 일으킬 수 있기 때문에 `ASSERT`로 인터럽트 처리 도중 이 함수가 실행될 경우 커널 패닉이 일어나게 한다. 또한, `schedule` 함수가 실행된 이후에는 이후에 설명하듯 `thread_schedule`에 의해 스레드가 삭제되어야 하는데, `schedule` 함수가 실행된 이후에도 스레드에서 코드가 실행된다는 것은 핀토스 어딘가에 버그가 존재한다는 뜻이다. 따라서 이 경우에도 커널 패닉이 일어나도록 `NOT_REACHED`를 사용한다.
+
 ### Synchronization Primitives
 
 ## Design Plan
