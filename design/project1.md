@@ -30,7 +30,7 @@ struct thread
 
 핀토스의 스레드는 `thread.h` 파일에 정의된 `thread` 구조체로 관리된다. `thread` 구조체는 thread id(`tid`), 상태(`status`), 스택 포인터(`stack`), 우선 순위(`priority`)를 저장한다.
 
-구조체의 가장 마지막에 있는 `magic` 필드는 스택 오버플로우를 감지하는 데에 사용된다. 핀토스에서 스레드는 palloc 메모리 할당기에 의해 한 페이지 (4096바이트)를 할당받고, `tid`, `status` 등의 `thread` 구조체 필드들은 0바이트부터 저장되고, 스택의 데이터는 4KB부터 0바이트를 향해 쌓이기 때문에 스택에 너무 많은 데이터가 저장된다면 스레드의 데이터를 덮어쓸 위험이 있다. 만약 스택에 과도하게 데이터가 쌓인다면 구조체의 `magic` 필드가 가장 먼저 덮어 씌어질 것이고, 핀토스는 이 `magic` 필드가 지정된 값 (`THREAD_MAGIC`)값과 달라질 때 스택 오버플로우가 발생한 것으로 판정하고 커널 패닉을 일으킨다.
+구조체의 가장 마지막에 있는 `magic` 필드는 스택 오버플로우를 감지하는 데에 사용된다. 핀토스에서 스레드는 palloc 메모리 할당기에 의해 한 페이지 (4096바이트)를 할당받고, `tid`, `status` 등의 `thread` 구조체 필드들은 0바이트부터 저장되고, 스택의 데이터는 4KB부터 0바이트를 향해 쌓이기 때문에 스택에 너무 많은 데이터가 저장된다면 스레드의 데이터를 덮어쓸 위험이 있다. 만약 스택에 과도하게 데이터가 쌓인다면 구조체의 `magic` 필드가 가장 먼저 덮어 씌어질 것이고, 핀토스는 이 `magic` 필드가 지정된 값 (`THREAD_MAGIC`)값과 달라질 때 스택 오버플로우가 발생한 것으로 판정하고 커널 패닉을 일으킨다.
 
 핀토스 스레드의 상태는 `thread_status` enum의 네 가지 중 하나의 값으로 결정된다.
 
@@ -44,7 +44,7 @@ enum thread_status
 };
 ```
 
-핀토스 스레드의 우선 순위는 0 (`PRI_MIN`) 이상 63 (`PRI_MAX`) 이하의 정수 값이고, 기본 우선 순위는 31 (`PRI_DEFAULT`) 이다.
+핀토스 스레드의 우선 순위는 0 (`PRI_MIN`) 이상 63 (`PRI_MAX`) 이하의 정수 값이고, 기본 우선 순위는 31 (`PRI_DEFAULT`) 이다.
 
 `THREAD_RUNNING`, `THREAD_READY`, `THREAD_BLOCKED`, `THREAD_DYING` 각각의 의미는 다음과 같다.
 
@@ -53,7 +53,7 @@ enum thread_status
 - `THREAD_BLOCKED`: 스레드가 특정 조건을 만족할 때까지 기다리는 상태
 - `THREAD_DYING`: 곧 삭제될 상태
 
-핀토스의 스레드 시스템에서는 모든 스레드를 모아 놓은 리스트인 `all_list`와 THREAD_READY 상태인 스레드를 모아 놓은 `ready_list` 두 개의 리스트를 관리하면서 스레드를 추가, 삭제하고 스케줄링한다. 이때 `all_list`와 `ready_list`는 일종의 critical section이므로 synchronization이 필요하다. 하지만 이들 리스트는 인터럽트 핸들러에 의해 실행하는 `thread_yield`, `schedule` 등의 함수에서 수정되는 경우가 얼마든지 가능하다. 인터럽트 핸들러에서는 스레드의 sleep이 불가능하므로, lock과 같은 synchronization primitive를 사용할 수는 없다. 이련 이유로 핀토스에서는 `all_list`와 `ready_list`를 동기화하기 위해 이들 리스트를 변경하기 전에 인터럽트를 비활성화하고, 변경이 끝난 후에는 인터럽트를 활성화한다.
+핀토스의 스레드 시스템에서는 모든 스레드를 모아 놓은 리스트인 `all_list`와 THREAD_READY 상태인 스레드를 모아 놓은 `ready_list` 두 개의 리스트를 관리하면서 스레드를 추가, 삭제하고 스케줄링한다. 이때 `all_list`와 `ready_list`는 일종의 critical section이므로 synchronization이 필요하다. 하지만 이들 리스트는 인터럽트 핸들러에 의해 실행하는 `thread_yield`, `schedule` 등의 함수에서 수정되는 경우가 얼마든지 가능하다. 인터럽트 핸들러에서는 스레드의 sleep이 불가능하므로, lock과 같은 synchronization primitive를 사용할 수는 없다. 이련 이유로 핀토스에서는 `all_list`와 `ready_list`를 동기화하기 위해 이들 리스트를 변경하기 전에 인터럽트를 비활성화하고, 변경이 끝난 후에는 인터럽트를 활성화한다.
 
 #### Thread-Related Functions
 
@@ -77,7 +77,7 @@ thread_init (void)
 }
 ```
 
-thread id 할당을 위한 `lock`, `tid_lock` 초기화, ready list와 전체 스레드 리스트를 초기화한 다음, 메인 스레드를 생성한다.
+thread id 할당을 위한 `tid_lock`, ready list와 전체 스레드 리스트를 초기화한 다음, 메인 스레드를 생성한다.
 
 ##### `thread_start`
 
@@ -172,7 +172,7 @@ thread_create (const char *name, int priority,
 }
 ```
 
-주어진 함수 `function`에 인자 `aux`를 주어 실행하는 스레드를 생성하고, 실행 가능한 상태가 되도록 `thread` 구조체의 각종 필드를 초기화한다. `thread_unblock` 함수를 사용하여 ready list에 생성된 스레드를 넣은 다음 생성된 스레드의 thread id를 반환한다.
+주어진 함수 `function`에 인자 `aux`를 주어 실행하는 스레드를 생성하고, 실행 가능한 상태가 되도록 `thread` 구조체의 각종 필드를 초기화한다. `thread_unblock` 함수를 사용하여 ready list에 생성된 스레드를 넣은 다음 생성된 스레드의 thread id를 반환한다.
 
 ##### `thread_block`
 
