@@ -257,6 +257,42 @@ thread_yield (void)
 
 현재 스레드의 상태를 `THREAD_READY`로 설정하고, 현재 스레드가 idle thread가 아닌 경우 `ready_list`에 자신을 추가한 다음 `schedule` 함수를 실행한다. 인터럽트 처리 도중 `thread_yield` 함수가 실행되어 스레드가 멈출 경우 OS를 멈추는 결과를 일으킬 수 있기 때문에, `ASSERT`를 통해 인터럽트 처리 중 이 함수가 실행될 경우 커널 패닉이 일어나게 한다. 또한, 앞서 설명했듯 `ready_list`를 변경하는 도중 인터럽트가 발생하지 않도록 인터럽트를 비활성화했다가 다시 활성화하는 것을 볼 수 있다.
 
+##### `thread_schedule_tail`
+
+```c
+void
+thread_schedule_tail (struct thread *prev)
+{
+  struct thread *cur = running_thread ();
+
+  ASSERT (intr_get_level () == INTR_OFF);
+
+  /* Mark us as running. */
+  cur->status = THREAD_RUNNING;
+
+  /* Start new time slice. */
+  thread_ticks = 0;
+
+#ifdef USERPROG
+  /* Activate the new address space. */
+  process_activate ();
+#endif
+
+  /* If the thread we switched from is dying, destroy its struct
+     thread.  This must happen late so that thread_exit() doesn't
+     pull out the rug under itself.  (We don't free
+     initial_thread because its memory was not obtained via
+     palloc().) */
+  if (prev != NULL && prev->status == THREAD_DYING && prev != initial_thread)
+    {
+      ASSERT (prev != cur);
+      palloc_free_page (prev);
+    }
+}
+```
+
+현재 스레드의 상태를 `THREAD_RUNNING`으로 바꾸고, `thread_ticks`를 0으로 초기화한다. 이전 스레드가 핀토스가 최초로 실행한 스레드(`initial_thread`)가 아니면서 `THREAD_DYING` 상태일 경우 이전 스레드를 정리한다.
+
 ### Synchronization Primitives
 
 ## Design Plan
