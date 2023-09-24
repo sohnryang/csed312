@@ -379,6 +379,77 @@ schedule (void)
 
 ### Alarm Clock
 
+#### Structure to be added
+
+##### `struct list sleeping_list`
+스레드 Sleeping을 busy waiting 방식의 구현에서 바꾸기 위해 새로운 `list`인 `sleeping_list`를 thread system에 추가한다.
+
+##### `int64_t thread_wakeup_time`
+각 스레드가 깨어나야 할 시간을 저장하기 위해 `struct thread`에 `int64_t` 타입의 `thread_wakeup_time`을 추가한다.
+
+#### Functions to be modified
+
+##### `timer_sleep()`
+
+`timer_sleep()`를 다시 구현하기 위해 다음과 같은 방법을 택할 것이다.
+
+1. 해당 함수의 인자로 받은 `tick` 만큼의 시간 이후에 깨어날 수 있도록 현재 스레드의 `thread_wakeup_time`을 설정한다.
+2. 현재 스레드의 `elem`을 `sleep_list`에 스레드의 `thread_wakeup_time`이 증가하는 순서로 삽입한다. 이 과정은 $O(n)$의 시간이 소요된다.
+3. 삽입한 스레드의 `status`를 `THREAD_BLOCKED`으로 설정한다.
+   - `status`를 설정하는 데 있어서 `thread_block()` 함수를 사용할 수 있다. 이 때, 앞서 언급한 OS가 멈추는 결과를 초래하지 않기 위한 `ASSERT (intr_get_level () == INTR_OFF);` 구문을 만족시키기 위해 `thread_block()`의 실행 전과 후에 interrupt level을 변경하는 부분이 필요하다.
+
+개략적인 Pseudocode는 다음과 같다.
+
+```c
+void
+timer_sleep (int64_t ticks) 
+{  
+  "[Set the interrupt level to INTR_OFF]"
+  
+  /* Set current thread status wakeup time*/
+  thread_current()->thread_wakeup_time = "[Now OS tick]" + ticks;
+
+  /* Insert current thread to sleep_list, by increasing order of thread_wakeup_time*/
+  list_insert_ordered ( 
+    &sleep_list,              // List to store sleeping threads
+    &thread_current()->elem,  // Store-able element of thread
+    "[Function ptr. to compare thread_wakeup_time]",
+    NULL  // No arguments are passed
+  );
+
+  thread_block ();  //Set current thread state to THREAD_BLOCK
+  
+  "[Restore the previous interrupt level]"
+
+  return;
+}
+```
+
+##### `timer_interrupt()`
+
+`timer_sleep()`에서 스레드의 `status`가 `THREAD_BLOCKED`로 전환된 스레드를 시간에 맞추어 `THREAD_READY` 상태의 `status`로 복원하기 위해 다음 방법을 택할 것이다.
+
+1. `thread_tick()`이 호출 된 이후 `sleeping_list`를 순회하며 스레드의 `thread_wakeup_time`이 현재 시간이 된 스레드의 `status`를 `THREAD_READY`로 설정한다.
+   - `sleeping_list`를 순회할 때 순서에 맞게 삽입했기 때문에 $O(1)$의 시간에 스레드를 unblock할 수 있다.
+
+개략적인 Pseudocode는 다음과 같다.
+
+```c
+static void
+timer_interrupt (struct intr_frame *args UNUSED)
+{
+  "[Increase the OS ticks and thread ticks]"
+
+  for("[sleep_list is Non-empty and front of the sleep_list should be woke up]")
+  {
+    list_pop_front(&sleep_list);
+    "[Unblock the popped thread]"
+  }
+
+  return;
+}
+```
+
 ### Priority Scheduler
 
 ### Advanced Scheduler
