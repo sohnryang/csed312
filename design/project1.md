@@ -668,10 +668,10 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 
 #### Structure to be added
 
-##### `struct list sleeping_list`
+##### `struct list sleeping_list` as globally
 스레드 Sleeping을 busy waiting 방식의 구현에서 바꾸기 위해 새로운 `list`인 `sleeping_list`를 thread system에 추가한다.
 
-##### `int64_t thread_wakeup_time`
+##### `int64_t thread_wakeup_time` to `struct thread`
 각 스레드가 깨어나야 할 시간을 저장하기 위해 `struct thread`에 `int64_t` 타입의 `thread_wakeup_time`을 추가한다.
 
 #### Functions to be modified
@@ -873,17 +873,17 @@ thread_priority_update()
 
 
 
-#### Structure to be added to `struct thread`
+#### Structure to be added
 
-##### `struct list donor`, `struct list_elem donor_elem`
+##### `struct list donor`, `struct list_elem donor_elem` to `struct thread`
 
 Multiple donation 상황에서 스레드가 우선순위를 주고받았음을 기록하기 위한 자료구조이다. 언급한 대로, `struct list_elem donor_elem`을 가지고 있는 스레드의 priority 순으로 정렬되어 `struct list donor`에 $O(n)$ 으로 삽입한다. $O(1)$ 에 priority를 갱신하기  위함이다. 
 
-##### `struct lock* wait`
+##### `struct lock* wait` to `struct thread`
 
 스레드 간 우선순위와 점유 상태를 나타내기 위한 자료구조이다. `struct lock`의 `struct semaphore semaphore`의 `struct list waiters`에서 `thread`의 `elem`을 저장하여 `lock`을 기다리고 있는 스레드들을 나타낼 수 있다.
 
-##### `int priority_init`
+##### `int priority_init` to `struct thread`
 
 다양한 priority donation 과정 이후, 원래의 우선순위로 돌려놓기 위해 초기 우선순위를 기록해놓아야 한다.
 
@@ -893,9 +893,17 @@ Multiple donation 상황에서 스레드가 우선순위를 주고받았음을 �
 
 #### Structure to be added
 
-##### `int mlfqs_nice`
+##### `[fixed point type] mlfqs_load_average` as globally
 
-##### `[fixed point type] mlfqs_recent_cpu`
+`load_average`는 이동 평균을 통해 계산하도록 Design document에 제시되어 있으며, 전역적인 값으로 현재 `state`가 `THREAD_READY`에 있는 스레드의 개수에 따라 변화한다. 스레드의 개수에 따라 변화하기 때문에 스레드의 멤버 variable이 아닌 전역 변수로 정의되어야 한다.
+
+##### `int mlfqs_nice` to `struct thread`
+
+`mlfqs_nice`는 각 스레드마다 다른 스레드에게 얼마나 *"친절한지"* 혹은 CPU를 다른 스레드에 얼마나 잘 양보하는지를 나타내는 지표이다. Document에서는 이 값을 `-20`에서 `20` 사이의 값으로, 값이 증가할수록 다른 스레드에게 CPU를 주는 경향이 강하다,
+
+##### `[fixed point type] mlfqs_recent_cpu` to `struct thread `
+
+`mlfqs_recent_cpu`는 해당 스레드가 얼마나 최근에 CPU 자원을 사용했는지를 나타내는 지표이다. 이 값이 커질수록, 다른 스레드에게 양보를 우선적으로 받게 된다.
 
 #### Structure to be modified
 
@@ -909,6 +917,55 @@ Multiple donation 상황에서 스레드가 우선순위를 주고받았음을 �
 
 부동소수점 연산은 CPU에게 매우 무거운 연산이기에, 실시간으로 스레드의 Priority를 갱신하기에 적절하지 않다. 따라서 정수형의 비트를 나누어 정수부 및 소수부로 나타내어 표시하는 고정 소수점 연산을 구현해야 하며, Reference documentation에 **17.14 fixed-point number representation**을 사용하도록 명시되어 있다. 
 
-스레드의 priority를 실시간으로 갱신하기 위해 계산에 사용되는 값으로 `1/4`, `1/60`, `59/60`과 같은 (고정 소수점 형태의) 정수 값을 미리 계산하여 상수로 정의, `#define`을 통해 전처리하여 빠른 계산을 도모할 수 있다.
+스레드의 priority를 실시간으로 갱신하기 위해 계산에 사용되는 값으로 `1/4`, `1/60`, `59/60`과 같은 (고정 소수점 형태의) 정수 값을 미리 계산하여 상수로 정의, `#define`을 통해 전처리하여 빠른 계산을 도모할 수 있다. 예를 들어, `0x111` 은 17.14 fixed-point number에서 `1/60`을 의미한다. (`1 << 14 / 60`)
+
+##### MLFQS priority calculation
+
+Design document에 주어진 대로, Priority와 Recent CPU, Load average는 다음과 같이 계산할 수 있다.
+$$
+Priority = \max(PRI\_MAX - \frac{Recent\_CPU}{4}-2\times Nice)
+\\
+Recent\_CPU = \frac{2 \times Load\_Avg}{2 \times Load\_Avg + 1} \times Recent\_CPU + Nice
+\\
+Load\_Avg = \frac{59}{60} \times Load\_Avg + \frac{1}{60} \times Ready\_Threads
+$$
+
 
 #### Function to be modified
+
+##### `static void timer_interrupt (struct intr_frame* args UNUSED)`
+
+실시간으로 priority를 갱신하기 위해, timer의 tick이 지날때마다 interrupt를 시도함과 동시에, 일정 tick마다 priority의 계산에 사용되는 parameter인 `nice` value와 `recent_cpu`, `load_avg`를 갱신한다. 
+
+```c
+static void
+timer_interrupt (struct intr_frame* args UNUSED)
+{
+    if (thread_mlfqs){	// IF thread scheduler is MLFQS scheduler
+        "[Increase the recent_cpu value of running thread]";
+        if (ticks % "[Priority update Freq.]" == 0)
+        {
+            "[Set priority of each thread]";
+        }
+        if (ticks % "[Timer Freq.]" == 0)
+        {
+            "[Update recent_cpu value of each thread]";
+            "[Update load_average value of each thread]";
+        }
+    }
+}
+```
+
+
+
+##### `void thread_set_nice (int nice)` & `int thread_get_nice (void)`
+
+현재 스레드의 `nice` 값을 설정하거나 반환하며, 갱신된 `nice`값으로 `priority`를 갱신한다. 스레드의 우선순위를 조작하기 전후로 interrupt level의 비활성화 및 복원이 필요하다.
+
+##### `int thread_get_load_avg (void)`
+
+이동평균을 사용하여 계산된 스레드의 평균 부하의 100배를 돌려주도록 명시되어 있다. 스레드의 우선순위에 직접 영향을 미치는 부분이기에 `mlfqs_load_average`의 접근 전후로 interrupt의 비활성화 및 복원이 필요하다.
+
+##### `int thread_get_recent_cpu (void)`
+
+각 tick마다 증가하게 되는 스레드의 `recent_cpu`값의 100배를 돌려준다. 마찬가지로 스레드의 우선순위에 직접 영향을 미치기 때문에 계산 전후로 interrupt의 비활성화 및 복원이 필요하다.
