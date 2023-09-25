@@ -377,6 +377,291 @@ schedule (void)
 
 ### Synchronization Primitives
 
+핀토스에는 `synch.c`에 `semaphore`, `lock`, `condition` 세 가지 synchronization primitive가 구현되어 있다.
+
+#### Semaphore
+
+세마포어는 critical section을 보호하기 위해 자원에 접근할 수 있는 스레드를 제한하는 데에 사용한다. 핀토스는 세마포어를 다음과 같은 구조체로 관리한다.
+
+```c
+struct semaphore
+{
+  unsigned value;      /* Current value. */
+  struct list waiters; /* List of waiting threads. */
+};
+```
+
+`value`는 세마포어가 현재 가지는 값, `waiters`는 세마포어의 값이 0보다 커지길 기다리는 스레드의 리스트이다.
+
+##### `sema_init`
+
+```c
+void
+sema_init (struct semaphore *sema, unsigned value)
+{
+  ASSERT (sema != NULL);
+
+  sema->value = value;
+  list_init (&sema->waiters);
+}
+```
+
+새로운 세마포어를 초기화한다. `value`를 지정된 값으로 세팅하고 `waiters` 리스트를 초기화하는 것을 볼 수 있다.
+
+##### `sema_down`
+
+```c
+void
+sema_down (struct semaphore *sema)
+{
+  enum intr_level old_level;
+
+  ASSERT (sema != NULL);
+  ASSERT (!intr_context ());
+
+  old_level = intr_disable ();
+  while (sema->value == 0)
+    {
+      list_push_back (&sema->waiters, &thread_current ()->elem);
+      thread_block ();
+    }
+  sema->value--;
+  intr_set_level (old_level);
+}
+```
+
+세마포어의 `value`를 down 시킨다. `value`가 0인 경우에는 0이 아닌 값이 될 때까지 현재 스레드를 block시킨다. `value`가 0이 아닌 값이 되면 반복문을 빠져나와 1 감소시킨다. 앞서 설명했듯 인터럽트를 처리 중인 스레드를 block시킬 수 없기 때문에 `ASSERT`로 인터럽트 핸들러에서 코드가 실행되지 않도록 검사하고, `thread_block`에 의해 `ready_list`와 같은 전역 자료 구조가 변경될 수 있기 때문에 인터럽트를 비활성화하여 synchronization을 수행한다.
+
+##### `sema_try_down`
+
+```c
+bool
+sema_try_down (struct semaphore *sema)
+{
+  enum intr_level old_level;
+  bool success;
+
+  ASSERT (sema != NULL);
+
+  old_level = intr_disable ();
+  if (sema->value > 0)
+    {
+      sema->value--;
+      success = true;
+    }
+  else
+    success = false;
+  intr_set_level (old_level);
+
+  return success;
+}
+```
+
+앞서 설명한 `sema_down`에서 반복문으로 기다리는 대신, 한 번만 down을 시도하는 함수이다. `sema_down`과 달리 인터럽트 핸들러에서도 실행할 수 있다. 단, 인터럽트 핸들러에서 `sema_try_down`을 하는 경우에는 `sema->value`에 접근하는 코드 또한 critical section이 되므로 이에 대한 synchronization을 위해 인터럽트를 `sema->value`를 체크하고 감소시키는 코드 전후에서 비활성화/활성화한다. `value`를 감소시키는 데 성공했다면 `true`, 아니면 `false`를 반환한다.
+
+##### `sema_up`
+
+```c
+void
+sema_up (struct semaphore *sema)
+{
+  enum intr_level old_level;
+
+  ASSERT (sema != NULL);
+
+  old_level = intr_disable ();
+  if (!list_empty (&sema->waiters))
+    thread_unblock (list_entry (list_pop_front (&sema->waiters),
+                                struct thread, elem));
+  sema->value++;
+  intr_set_level (old_level);
+}
+```
+
+세마포어의 `value`를 up시킨다. 세마포어의 `waiters` 리스트에서 스레드를 하나 꺼내 unblock하고, `value`를 1 증가시킨다. 이 함수도 인터럽트 핸들러 내부에서 실행될 수 있기 때문에, critical section이 되는 `sema->value`를 접근하는 코드에 대한 synchronization을 위해 인터럽트를 비활성화/활성화 하는 것을 볼 수 있다.
+
+#### Lock
+
+락은 critical section에 대한 접근을 통제하는 데 사용하는 synchronization primitive이다. 핀토스는 락을 다음과 같은 구조체로 관리한다.
+
+```c
+struct lock
+{
+  struct thread *holder;      /* Thread holding lock (for debugging). */
+  struct semaphore semaphore; /* Binary semaphore controlling access. */
+};
+```
+
+`holder`는 현재 락을 가지고 있는 스레드, `semaphore`는 락을 구성하는, 0 또는 1을 담는 세마포어이다.
+
+##### `lock_init`
+
+```c
+void
+lock_init (struct lock *lock)
+{
+  ASSERT (lock != NULL);
+
+  lock->holder = NULL;
+  sema_init (&lock->semaphore, 1);
+}
+```
+
+락을 초기화한다. 초기 상태에서 락을 소유하고 있는 스레드가 없고, 세마포어에 1을 넣는 것을 볼 수 있다.
+
+##### `lock_acquire`
+
+```c
+void
+lock_acquire (struct lock *lock)
+{
+  ASSERT (lock != NULL);
+  ASSERT (!intr_context ());
+  ASSERT (!lock_held_by_current_thread (lock));
+
+  sema_down (&lock->semaphore);
+  lock->holder = thread_current ();
+}
+```
+
+락을 획득한다. 세마포어에 대해 down을 수행하는데, 만약 락을 다른 스레드가 들고 있다면 세마포어의 `value`가 0이므로 1이 될 때까지 현재 스레드가 block되고, 그렇지 않다면 바로 `value`를 1에서 0으로 감소시키고 락을 획득할 것이다. 세마포어를 감소시킨 후에는 `holder`를 현재 스레드로 바꾸는 것을 볼 수 있다. 이 함수는 `sema_down`을 호출하기 때문에, 인터럽트 핸들러 내부에서는 실행할 수 없으므로 `ASSERT`로 확인하는 것을 볼 수 있다.
+
+##### `lock_try_acquire`
+
+```c
+bool
+lock_try_acquire (struct lock *lock)
+{
+  bool success;
+
+  ASSERT (lock != NULL);
+  ASSERT (!lock_held_by_current_thread (lock));
+
+  success = sema_try_down (&lock->semaphore);
+  if (success)
+    lock->holder = thread_current ();
+  return success;
+}
+```
+
+락의 획득을 시도한다. `sema_down` 대신 스레드를 block하지 않는 `sema_try_down`을 사용하고, 성공 여부를 반환한다. `sema_try_down`과 같이 인터럽트 핸들러에서 실행 가능하다.
+
+##### `lock_release`
+
+```c
+void
+lock_release (struct lock *lock)
+{
+  ASSERT (lock != NULL);
+  ASSERT (lock_held_by_current_thread (lock));
+
+  lock->holder = NULL;
+  sema_up (&lock->semaphore);
+}
+```
+
+현재 스래드가 들고 있는 락을 해제한다. `holder`를 `NULL`으로 설정하고 `sema_up`을 수행하는 것을 볼 수 있다.
+
+##### `lock_held_by_current_thread`
+
+```c
+bool
+lock_held_by_current_thread (const struct lock *lock)
+{
+  ASSERT (lock != NULL);
+
+  return lock->holder == thread_current ();
+}
+```
+
+현재 스레드가 락을 가지고 있는지 검사하는 함수이다.
+
+#### Conditional Variable
+
+Conditional variable은 여러 스레드가 특정 조건이 될 때까지 기다리는 상황에서 사용되는 synchronization primitive이다. 핀토스는 conditional variable을 다음과 같은 구조체로 관리한다.
+
+```c
+struct condition
+{
+  struct list waiters; /* List of waiting threads. */
+};
+```
+
+`waiters`는 조건이 참이 될 때까지 기다리는 스레드가 `sema_down` 하려는 세마포어의 리스트이다.
+
+##### `cond_init`
+
+```c
+void
+cond_init (struct condition *cond)
+{
+  ASSERT (cond != NULL);
+
+  list_init (&cond->waiters);
+}
+```
+
+`condition` 구조체를 초기화한다. `waiters` 리스트를 초기화하는 것을 볼 수 있다.
+
+##### `cond_wait`
+
+```c
+void
+cond_wait (struct condition *cond, struct lock *lock)
+{
+  struct semaphore_elem waiter;
+
+  ASSERT (cond != NULL);
+  ASSERT (lock != NULL);
+  ASSERT (!intr_context ());
+  ASSERT (lock_held_by_current_thread (lock));
+
+  sema_init (&waiter.semaphore, 0);
+  list_push_back (&cond->waiters, &waiter.elem);
+  lock_release (lock);
+  sema_down (&waiter.semaphore);
+  lock_acquire (lock);
+}
+```
+
+조건이 참이 될 때까지 기다리는 스레드를 하나 더 추가한다. 현재 스레드가 가지고 있는 `waiters` 리스트에 `waiter`를 추가하고 `lock`을 해제한 다음, `waiter`의 세마포어를 down 시키고 `lock`을 다시 획득한다. 이 함수의 경우 `lock`을 획득하는 과정이 필요하므로 인터럽트 핸들러에서 실행되는 것을 `ASSERT`로 방지한다.
+
+##### `cond_signal`
+
+```c
+void
+cond_signal (struct condition *cond, struct lock *lock UNUSED)
+{
+  ASSERT (cond != NULL);
+  ASSERT (lock != NULL);
+  ASSERT (!intr_context ());
+  ASSERT (lock_held_by_current_thread (lock));
+
+  if (!list_empty (&cond->waiters))
+    sema_up (&list_entry (list_pop_front (&cond->waiters),
+                          struct semaphore_elem, elem)
+                  ->semaphore);
+}
+```
+
+조건을 기다리는 스레드들이 있을 때, 리스트의 맨 앞에 있는 세마포어를 꺼내 `sema_up`을 수행한다.
+
+##### `cond_broadcast`
+
+```c
+void
+cond_broadcast (struct condition *cond, struct lock *lock)
+{
+  ASSERT (cond != NULL);
+  ASSERT (lock != NULL);
+
+  while (!list_empty (&cond->waiters))
+    cond_signal (cond, lock);
+}
+```
+
+`waiters`에 있는 모든 세마포어에 대해 `cond_signal`을 실행시킨다.
+
 ## Design Plan
 
 ### Alarm Clock
