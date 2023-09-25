@@ -1,3 +1,5 @@
+
+
 # Project 1 Design Report
 
 ## Analysis of the current implementation
@@ -452,4 +454,176 @@ timer_interrupt (struct intr_frame *args UNUSED)
 
 ### Priority Scheduler
 
+#### Abstract sequence of Nested Donation
+
+기본적으로 CPU를 사용하지 않는 스레드는 `thread->status`가 `THREAD_READY` 상태이며, 이들은 모두 `ready_list`에 `priority`에 따라 정렬된 상태로 삽입되어야 한다. 기존에 실행되던 스레드가 CPU를 `yield`하고 다시 `ready_list`로 들어오는 경우 다음으로 우선순위가 높은 스레드가 바로 실행되어야 하기 때문에, [Alarm Clock의 구현](#`timer_sleep()`) 에서와 마찬가지로 우선순위에 맞게 $O(n)$의 시간에 스레드를 삽입, $O(1)$의 시간에 스레드를 꺼낼 수 있도록 구현할 것이다.
+
+서로 다른, 다양한 우선순위의 스레드가 같은 `lock`을 가지는 경우가 있을 수 있으며, 이 경우는 다음과 같이 `priority`를 donate받을 수 있다.
+
+```mermaid
+---
+title: Nested Donation
+---
+graph LR
+subgraph th_A["Thread A"]
+style th_A fill:#00c08040, stroke-width:0
+subgraph lock_A["Lock A"]
+hld_A["Hold of A"]
+end
+prt_A["Priority of A"]
+style prt_A fill:#ff000040, stroke-width:0
+end
+
+subgraph th_B["Thread B"]
+style th_B fill:#c0c00040, stroke-width:0
+subgraph lock_B["Lock B"]
+hld_B["Hold of B"]
+end
+prt_B["Priority of B"]
+style prt_B fill:#ff000040, stroke-width:0
+end
+
+subgraph th_C["Thread C"]
+style th_C fill:#ff000040, stroke-width:0
+subgraph lock_C["Lock C"]
+hld_C["Hold of C"]
+end
+prt_C["Priority of C"]
+style prt_C fill:#ff000040, stroke-width:0
+end
+
+NULL["NULL"]
+style NULL fill:#88888888, stroke-width:0
+
+hld_A-->th_B
+hld_B-->th_C
+hld_C-->NULL
+
+prt_A<--"Update A to B (C)"-->prt_B
+prt_B<--"Update B to C"-->prt_C
+
+```
+
+이 경우, **재귀적인 과정**을 통해 스레드의 Priority를 반영하는 과정이 필요하다. 다음과 같은 Pseudocode로 나타낼 수 있다.
+
+```c
+void
+thread_priority_donate()
+{
+    struct thread* current_thread = thread_current();	// Current thread
+    int initial_priority = current_thread->priority;	// Donation with starting priority
+    
+    while("[Current thread's holder is valid]")
+    {
+        "[Move current thread to current thread's holder]";
+        "[Update current thread's priority with `initial_priority`]";
+    }
+    return;
+}
+```
+
+
+
+#### Abstract sequence of Multiple Donation
+
+여러 개의 스레드가 하나의 스레드를 hold하고 있을 경우, 가장 우선순위가 높은 스레드의 우선순위를 공통되는 스레드에게 넘겨 주어야 한다. 이 때, 여러 스레드들은 공통된 스레드의  `struct list donor`에 자신의 `elem`을 삽입하며, 이 때도  [Alarm Clock의 구현](#`timer_sleep()`) 에서와 마찬가지로 우선순위에 맞게 $O(n)$의 시간에 스레드를 삽입, $O(1)$의 시간에 스레드의 정보를 꺼낼 수 있도록 구현할 것이다.
+
+```mermaid
+---
+title: Nested Donation
+---
+graph TD
+subgraph th_A["Thread L"]
+style th_A fill:#00c08040, stroke-width:0
+subgraph lock_A["Lock L"]
+hld_A["Hold of L"]
+end
+prt_A["Priority of L"]
+end
+
+subgraph th_C["Thread H"]
+style th_C fill:#ff000040, stroke-width:0
+subgraph lock_C["Lock H"]
+hld_C["Hold of H"]
+end
+prt_C["Priority of H"]
+end
+
+subgraph th_X["Thread X"]
+style th_X fill:#c0c0c040, stroke-width:0
+subgraph lock_X["Lock X"]
+hld_X["Hold of X"]
+end
+prt_X["Priority of X"]
+style prt_X fill:#ff000040, stroke-width:0
+don_X["Donation of X"]
+elem
+end
+
+don_X-->th_C
+don_X-->th_A
+
+hld_C-->elem
+hld_A-->elem
+
+prt_C=="Update with Higher Priority"==>prt_X
+
+
+```
+
+이 경우, 스레드의 `struct list donor`의 맨 앞 값과 비교하여 가장 높은 우선순위 값을 새로운 우선순위로 반영해 주어야 한다. 다음과 같은 Pseudocode로 나타낼 수 있다.
+
+```c
+void
+thread_priority_update()
+{
+    struct thread* current_thread = thread_current();	// Current thread
+    if ("[Donor list is not empty] && [Thread of (front of donor list) has higher priority than current thread]")
+    {
+        current_thread->priority = "[Priority of thread of (front of donor list)]";
+    }
+    return;
+}
+```
+
+
+
+#### Structure to be added to `struct thread`
+
+##### `struct list donor`, `struct list_elem donor_elem`
+
+Multiple donation 상황에서 스레드가 우선순위를 주고받았음을 기록하기 위한 자료구조이다. 언급한 대로, `struct list_elem donor_elem`을 가지고 있는 스레드의 priority 순으로 정렬되어 `struct list donor`에 $O(n)$ 으로 삽입한다. $O(1)$ 에 priority를 갱신하기  위함이다. 
+
+##### `struct lock* wait`
+
+스레드 간 우선순위와 점유 상태를 나타내기 위한 자료구조이다. `struct lock`의 `struct semaphore semaphore`의 `struct list waiters`에서 `thread`의 `elem`을 저장하여 `lock`을 기다리고 있는 스레드들을 나타낼 수 있다.
+
+##### `int priority_init`
+
+다양한 priority donation 과정 이후, 원래의 우선순위로 돌려놓기 위해 초기 우선순위를 기록해놓아야 한다.
+
+
+
 ### Advanced Scheduler
+
+#### Structure to be added
+
+##### `int mlfqs_nice`
+
+##### `[fixed point type] mlfqs_recent_cpu`
+
+#### Structure to be modified
+
+##### `int priority`
+
+스레드의 `priority`를 donation이 아니라 실시간으로 갱신되는 값으로 사용하기 위해, 앞서 Priority Scheduler에서 사용한 알고리즘과 다른 알고리즘을 통해 값을 설정해야 한다.
+
+#### Function to be added
+
+##### Fixed-point arithmetic
+
+부동소수점 연산은 CPU에게 매우 무거운 연산이기에, 실시간으로 스레드의 Priority를 갱신하기에 적절하지 않다. 따라서 정수형의 비트를 나누어 정수부 및 소수부로 나타내어 표시하는 고정 소수점 연산을 구현해야 하며, Reference documentation에 **17.14 fixed-point number representation**을 사용하도록 명시되어 있다. 
+
+스레드의 priority를 실시간으로 갱신하기 위해 계산에 사용되는 값으로 `1/4`, `1/60`, `59/60`과 같은 (고정 소수점 형태의) 정수 값을 미리 계산하여 상수로 정의, `#define`을 통해 전처리하여 빠른 계산을 도모할 수 있다.
+
+#### Function to be modified
