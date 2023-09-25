@@ -55,7 +55,7 @@ enum thread_status
 - `THREAD_BLOCKED`: 스레드가 특정 조건을 만족할 때까지 기다리는 상태
 - `THREAD_DYING`: 곧 삭제될 상태
 
-핀토스의 스레드 시스템에서는 모든 스레드를 모아 놓은 리스트인 `all_list`와 THREAD_READY 상태인 스레드를 모아 놓은 `ready_list` 두 개의 리스트를 관리하면서 스레드를 추가, 삭제하고 스케줄링한다. 이때 `all_list`와 `ready_list`는 일종의 critical section이므로 synchronization이 필요하다. 하지만 이들 리스트는 인터럽트 핸들러에 의해 실행하는 `thread_yield`, `schedule` 등의 함수에서 수정되는 경우가 얼마든지 가능하다. 인터럽트 핸들러에서는 스레드의 sleep이 불가능하므로, lock과 같은 synchronization primitive를 사용할 수는 없다. 이련 이유로 핀토스에서는 `all_list`와 `ready_list`를 동기화하기 위해 이들 리스트를 변경하기 전에 인터럽트를 비활성화하고, 변경이 끝난 후에는 인터럽트를 활성화한다.
+핀토스의 스레드 시스템에서는 모든 스레드를 모아 놓은 리스트인 `all_list`와 THREAD_READY 상태인 스레드를 모아 놓은 `ready_list` 두 개의 리스트를 관리하면서 스레드를 추가, 삭제하고 스케줄링한다. 이때 `all_list`와 `ready_list`를 접근하는 코드는 일종의 critical section이므로 synchronization이 필요하다. 하지만 이들 리스트는 인터럽트 핸들러에 의해 실행하는 `thread_yield`, `schedule` 등의 함수에서 수정되는 경우가 얼마든지 가능하다. 인터럽트 핸들러에서는 스레드의 sleep이 불가능하므로, lock과 같은 synchronization primitive를 사용할 수는 없다. 이련 이유로 핀토스에서는 `all_list`와 `ready_list`를 동기화하기 위해 이들 리스트를 변경하기 전에 인터럽트를 비활성화하고, 변경이 끝난 후에는 인터럽트를 활성화한다.
 
 #### Thread-Related Functions
 
