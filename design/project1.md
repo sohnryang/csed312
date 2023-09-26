@@ -909,13 +909,13 @@ Multiple donation 상황에서 스레드가 우선순위를 주고받았음을 �
 
 ##### `int priority`
 
-스레드의 `priority`를 donation이 아니라 실시간으로 갱신되는 값으로 사용하기 위해, 앞서 Priority Scheduler에서 사용한 알고리즘과 다른 알고리즘을 통해 값을 설정해야 한다.
+스레드의 `priority`를 donation이 아니라 실시간으로 갱신되는 가중치로 사용하기 위해, 앞서 Priority Scheduler에서 사용한 알고리즘과 다른 알고리즘을 통해 값을 설정해야 한다. 가중치에 기여하는 값에는 (스레드가 다른 스레드에게 CPU를 양보하기 쉬운 정도), (스레드가 가장 최근에 CPU를 점유한 이후로의 시간)을 통해 결정하게 된다.
 
 #### Function to be added
 
 ##### Fixed-point arithmetic
 
-부동소수점 연산은 CPU에게 매우 무거운 연산이기에, 실시간으로 스레드의 Priority를 갱신하기에 적절하지 않다. 따라서 정수형의 비트를 나누어 정수부 및 소수부로 나타내어 표시하는 고정 소수점 연산을 구현해야 하며, Reference documentation에 **17.14 fixed-point number representation**을 사용하도록 명시되어 있다. 
+부동소수점을 저장하는 `xmm` , `ymm` 등의 register는 general purpose register와 다르게, 스레드의 전환이나 인터럽트 등을 진행했을 때 보존되지 않을 수 있다. 이러한 이유 때문에 실수형을 나타내는 방식보다 정수형을 실수형처럼 분할하여 사용하는 방식이 정보의 저장 및 보존 측면에서 적합하다. 따라서 정수형의 비트를 나누어 정수부 및 소수부로 나타내어 표시하는 고정 소수점 연산을 구현해야 하며, Reference documentation에 **17.14 fixed-point number representation**을 사용하도록 명시되어 있다. 
 
 스레드의 priority를 실시간으로 갱신하기 위해 계산에 사용되는 값으로 `1/4`, `1/60`, `59/60`과 같은 (고정 소수점 형태의) 정수 값을 미리 계산하여 상수로 정의, `#define`을 통해 전처리하여 빠른 계산을 도모할 수 있다. 예를 들어, `0x111` 은 17.14 fixed-point number에서 `1/60`을 의미한다. (`1 << 14 / 60`)
 
