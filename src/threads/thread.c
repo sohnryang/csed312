@@ -28,6 +28,10 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+/* List of sleeping processes, defined on timer.c. Process that
+   blocked by timer_sleep() are inserted here.  */
+extern struct list sleeping_list;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -91,6 +95,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
+  list_init (&sleeping_list);
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -586,3 +591,16 @@ allocate_tid (void)
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
+
+
+/* struct thread member variable compare functions */
+bool thread_compare_wakeup (struct list_elem* elem_l, struct list_elem* elem_r, void* aux UNUSED)
+{
+  struct thread* thrd_l = list_entry(elem_l, struct thread, elem);
+  struct thread* thrd_r = list_entry(elem_r, struct thread, elem);
+
+  ASSERT(is_thread(thrd_l));
+  ASSERT(is_thread(thrd_r));
+
+  return thrd_l->wakeup_ticks < thrd_r->wakeup_ticks;
+}

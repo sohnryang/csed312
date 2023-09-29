@@ -30,6 +30,9 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 
+/* Used for managing sleeping threads. */
+struct list sleeping_list;
+
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
 void
@@ -90,10 +93,22 @@ void
 timer_sleep (int64_t ticks)
 {
   int64_t start = timer_ticks ();
-
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks)
-    thread_yield ();
+
+  enum intr_level prev_intr_level = intr_disable();
+  struct thread* current_thread = thread_current();
+
+  current_thread->wakeup_ticks = start + ticks;
+
+  list_insert_ordered(
+    &sleeping_list,
+    &current_thread->elem,
+    thread_compare_wakeup,
+    NULL
+  );
+
+  thread_block();
+  intr_set_level(prev_intr_level);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -172,6 +187,21 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
+
+  struct thread* sleeping_list_front;
+  while(!list_empty(&sleeping_list))
+  {
+    sleeping_list_front = list_entry(list_front(&sleeping_list), struct thread, elem);
+    if (sleeping_list_front->wakeup_ticks <= ticks)
+    {
+      list_pop_front(&sleeping_list);
+      thread_unblock(sleeping_list_front);
+    }
+    else
+    {
+      break;
+    }
+  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
