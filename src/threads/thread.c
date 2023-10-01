@@ -598,7 +598,8 @@ uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 
 /* struct thread member variable compare functions */
-bool thread_compare_wakeup (struct list_elem* elem_l, struct list_elem* elem_r, void* aux UNUSED)
+bool
+thread_compare_wakeup (struct list_elem* elem_l, struct list_elem* elem_r, void* aux UNUSED)
 {
   struct thread* thrd_l = list_entry(elem_l, struct thread, elem);
   struct thread* thrd_r = list_entry(elem_r, struct thread, elem);
@@ -609,7 +610,8 @@ bool thread_compare_wakeup (struct list_elem* elem_l, struct list_elem* elem_r, 
   return thrd_l->wakeup_ticks < thrd_r->wakeup_ticks;
 }
 
-bool thread_compare_priority (struct list_elem* elem_l, struct list_elem* elem_r, void* aux UNUSED)
+bool
+thread_compare_priority (struct list_elem* elem_l, struct list_elem* elem_r, void* aux UNUSED)
 {
   struct thread* thrd_l = list_entry(elem_l, struct thread, elem);
   struct thread* thrd_r = list_entry(elem_r, struct thread, elem);
