@@ -143,5 +143,5 @@ int thread_get_load_avg (void);
 
 /* struct thread member variable comparing functions */
 bool thread_compare_wakeup (struct list_elem*, struct list_elem*, void* aux UNUSED);
-
+bool thread_compare_priority (struct list_elem*, struct list_elem*, void* aux UNUSED);
 #endif /* threads/thread.h */
