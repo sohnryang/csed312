@@ -344,7 +344,20 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority)
 {
+  if (thread_mlfqs)
+  {
+    return;
+  }
+  
   thread_current ()->priority = new_priority;
+  thread_current ()->priority_original = new_priority;
+
+  thread_update_priority();
+  
+  /**
+   * YIELD IMMEDIATELY if this thread distracts
+   * Other therad's locks or conditional variables.
+  */
 }
 
 /* Returns the current thread's priority. */
@@ -597,6 +610,26 @@ allocate_tid (void)
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 
+/* Thread priority update */
+void
+thread_update_priority (void)
+{
+  struct thread* current_thread = thread_current();
+
+  if (list_empty(&current_thread->donor))
+  {
+    return;
+  }
+
+  struct thread* highest_donor_thread = list_entry(list_front(&current_thread->donor), struct thread, donor_elem);
+  ASSERT(is_thread(highest_donor_thread));
+
+  if (current_thread->priority < highest_donor_thread->priority)
+  {
+    current_thread->priority = highest_donor_thread->priority;
+  }
+}
+
 /* struct thread member variable compare functions */
 bool
 thread_compare_wakeup (struct list_elem* elem_l, struct list_elem* elem_r, void* aux UNUSED)
@@ -615,6 +648,18 @@ thread_compare_priority (struct list_elem* elem_l, struct list_elem* elem_r, voi
 {
   struct thread* thrd_l = list_entry(elem_l, struct thread, elem);
   struct thread* thrd_r = list_entry(elem_r, struct thread, elem);
+
+  ASSERT(is_thread(thrd_l));
+  ASSERT(is_thread(thrd_r));
+
+  return thrd_l->priority > thrd_r->priority;
+}
+
+bool
+thread_compare_priority_donor_priority (struct list_elem* elem_l, struct list_elem* elem_r, void* aux UNUSED)
+{
+  struct thread* thrd_l = list_entry(elem_l, struct thread, priority_donor_elem);
+  struct thread* thrd_r = list_entry(elem_r, struct thread, priority_donor_elem);
 
   ASSERT(is_thread(thrd_l));
   ASSERT(is_thread(thrd_r));
