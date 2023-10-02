@@ -355,9 +355,13 @@ thread_set_priority (int new_priority)
   thread_update_priority();
   
   /**
-   * YIELD IMMEDIATELY if this thread distracts
+   * YIELD IMMEDIATELY if this thread distracts (or preempt)
    * Other therad's locks or conditional variables.
   */
+  if (thread_could_preempt())
+  {
+    thread_yield();
+  }
 }
 
 /* Returns the current thread's priority. */
@@ -610,7 +614,7 @@ allocate_tid (void)
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
 
-/* Thread priority update */
+/* Thread priority 'update' */
 void
 thread_update_priority (void)
 {
@@ -630,6 +634,28 @@ thread_update_priority (void)
   }
 }
 
+/* Thread priority 'donate': In case of nested-donation*/
+void
+thread_donate_priority (void)
+{
+  struct thread* current_therad = therad_current();
+  int current_thread_priority = current_thread->priority;
+
+  ASSERT (current_thread != NULL);
+  ASSERT (current_thread->wait != NULL);
+  ASSERT (current_thread->wait->holder != NULL);
+
+  struct thread* holder_thread;
+
+  while (current_thread->wait != NULL)
+  {
+    holder_thread = current_thread->wait->holder;
+    holder_thread->priority = current_thread_priority;
+    current_thread = holder_thread;
+  }
+
+  return;
+}
 /* struct thread member variable compare functions */
 bool
 thread_compare_wakeup (struct list_elem* elem_l, struct list_elem* elem_r, void* aux UNUSED)
