@@ -613,6 +613,18 @@ allocate_tid (void)
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
+/* Check whether current thread could be fell deadlock,
+   By comparing with most prioritized thread among waiting threads. */
+bool
+thread_could_preempt (void)
+{
+  if (!list_empty(&ready_list) &&                                                                         /* Waiting threads exist */
+       thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)   /* Has higher priority than current thread */
+  {
+    return true;
+  }
+  return false;
+}
 
 /* Thread priority 'update' */
 void

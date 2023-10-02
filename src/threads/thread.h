@@ -147,6 +147,8 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+bool thread_could_preempt (void);
+
 void thread_update_priority (void);
 void thread_donate_priority (void);
 
