@@ -243,8 +243,8 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
 
-  list_insert_ordered(&ready_list, &t->elem, thread_compare_priority, NULL);
-  
+  list_insert_ordered (&ready_list, &t->elem, thread_compare_priority, NULL);
+
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -316,8 +316,8 @@ thread_yield (void)
   old_level = intr_disable ();
 
   if (cur != idle_thread)
-    list_insert_ordered(&ready_list, &cur->elem, thread_compare_priority, NULL);
-  
+    list_insert_ordered (&ready_list, &cur->elem, thread_compare_priority, NULL);
+
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -345,23 +345,23 @@ void
 thread_set_priority (int new_priority)
 {
   if (thread_mlfqs)
-  {
-    return;
-  }
-  
+    {
+      return;
+    }
+
   thread_current ()->priority = new_priority;
   thread_current ()->priority_original = new_priority;
 
-  thread_update_priority();
-  
+  thread_update_priority ();
+
   /**
    * YIELD IMMEDIATELY if this thread distracts (or preempt)
    * Other therad's locks or conditional variables.
-  */
-  if (thread_could_preempt())
-  {
-    thread_yield();
-  }
+   */
+  if (thread_could_preempt ())
+    {
+      thread_yield ();
+    }
 }
 
 /* Returns the current thread's priority. */
@@ -496,7 +496,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
   t->wait = NULL;
-  list_init(&t->priority_donor);
+  list_init (&t->priority_donor);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -622,11 +622,11 @@ uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 bool
 thread_could_preempt (void)
 {
-  if (!list_empty(&ready_list) &&                                                                         /* Waiting threads exist */
-       thread_current()->priority < list_entry(list_front(&ready_list), struct thread, elem)->priority)   /* Has higher priority than current thread */
-  {
-    return true;
-  }
+  if (!list_empty (&ready_list) &&                                                                        /* Waiting threads exist */
+      thread_current ()->priority < list_entry (list_front (&ready_list), struct thread, elem)->priority) /* Has higher priority than current thread */
+    {
+      return true;
+    }
   return false;
 }
 
@@ -634,77 +634,77 @@ thread_could_preempt (void)
 void
 thread_update_priority (void)
 {
-  struct thread* current_thread = thread_current();
+  struct thread *current_thread = thread_current ();
 
-  if (list_empty(&current_thread->priority_donor))
-  {
-    return;
-  }
+  if (list_empty (&current_thread->priority_donor))
+    {
+      return;
+    }
 
-  struct thread* highest_donor_thread = list_entry(list_front(&current_thread->priority_donor), struct thread, priority_donor_elem);
-  ASSERT(is_thread(highest_donor_thread));
+  struct thread *highest_donor_thread = list_entry (list_front (&current_thread->priority_donor), struct thread, priority_donor_elem);
+  ASSERT (is_thread (highest_donor_thread));
 
   if (current_thread->priority < highest_donor_thread->priority)
-  {
-    current_thread->priority = highest_donor_thread->priority;
-  }
+    {
+      current_thread->priority = highest_donor_thread->priority;
+    }
 }
 
 /* Thread priority 'donate': In case of nested-donation*/
 void
 thread_donate_priority (void)
 {
-  struct thread* current_thread = thread_current();
+  struct thread *current_thread = thread_current ();
   int current_thread_priority = current_thread->priority;
 
   ASSERT (current_thread != NULL);
   ASSERT (current_thread->wait != NULL);
   ASSERT (current_thread->wait->holder != NULL);
 
-  struct thread* holder_thread;
+  struct thread *holder_thread;
 
   while (current_thread->wait != NULL)
-  {
-    holder_thread = current_thread->wait->holder;
-    holder_thread->priority = current_thread_priority;
-    current_thread = holder_thread;
-  }
+    {
+      holder_thread = current_thread->wait->holder;
+      holder_thread->priority = current_thread_priority;
+      current_thread = holder_thread;
+    }
 
   return;
 }
 /* struct thread member variable compare functions */
 bool
-thread_compare_wakeup (struct list_elem* elem_l, struct list_elem* elem_r, void* aux UNUSED)
+thread_compare_wakeup (struct list_elem *elem_l, struct list_elem *elem_r, void *aux UNUSED)
 {
-  struct thread* thrd_l = list_entry(elem_l, struct thread, elem);
-  struct thread* thrd_r = list_entry(elem_r, struct thread, elem);
+  struct thread *thrd_l = list_entry (elem_l, struct thread, elem);
+  struct thread *thrd_r = list_entry (elem_r, struct thread, elem);
 
-  ASSERT(is_thread(thrd_l));
-  ASSERT(is_thread(thrd_r));
+  ASSERT (is_thread (thrd_l));
+  ASSERT (is_thread (thrd_r));
 
   return thrd_l->wakeup_ticks < thrd_r->wakeup_ticks;
 }
 
 bool
-thread_compare_priority (struct list_elem* elem_l, struct list_elem* elem_r, void* aux UNUSED)
+thread_compare_priority (struct list_elem *elem_l, struct list_elem *elem_r, void *aux UNUSED)
 {
-  struct thread* thrd_l = list_entry(elem_l, struct thread, elem);
-  struct thread* thrd_r = list_entry(elem_r, struct thread, elem);
+  struct thread *thrd_l = list_entry (elem_l, struct thread, elem);
+  struct thread *thrd_r = list_entry (elem_r, struct thread, elem);
 
-  ASSERT(is_thread(thrd_l));
-  ASSERT(is_thread(thrd_r)) ;
+  ASSERT (is_thread (thrd_l));
+  ASSERT (is_thread (thrd_r));
 
   return thrd_l->priority > thrd_r->priority;
 }
 
 bool
-thread_compare_priority_donor_priority (struct list_elem* elem_l, struct list_elem* elem_r, void* aux UNUSED)
+thread_compare_priority_donor_priority (struct list_elem *elem_l, struct list_elem *elem_r, void *aux UNUSED)
 {
-  struct thread* thrd_l = list_entry(elem_l, struct thread, priority_donor_elem);
-  struct thread* thrd_r = list_entry(elem_r, struct thread, priority_donor_elem);
+  struct thread *thrd_l = list_entry (elem_l, struct thread, priority_donor_elem);
+  struct thread *thrd_r = list_entry (elem_r, struct thread, priority_donor_elem);
 
-  ASSERT(is_thread(thrd_l));
-  ASSERT(is_thread(thrd_r));
+  ASSERT (is_thread (thrd_l));
+  ASSERT (is_thread (thrd_r));
 
   return thrd_l->priority > thrd_r->priority;
 }

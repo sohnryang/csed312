@@ -97,10 +97,10 @@ struct thread
   int64_t wakeup_ticks;
 
   /* Thread priority donations requirements. */
-  int priority_original;                  /* Restore original priority after donation. */
-  struct lock* wait;                      /* Priority waiting threads lock to. */
-  struct list priority_donor;             /* Remember which thread had donated priority to this. */
-  struct list_elem priority_donor_elem;   /* Element to be inserted in `priority_donor`*/
+  int priority_original;                /* Restore original priority after donation. */
+  struct lock *wait;                    /* Priority waiting threads lock to. */
+  struct list priority_donor;           /* Remember which thread had donated priority to this. */
+  struct list_elem priority_donor_elem; /* Element to be inserted in `priority_donor`*/
 
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
@@ -153,7 +153,7 @@ void thread_update_priority (void);
 void thread_donate_priority (void);
 
 /* struct thread member variable comparing functions */
-bool thread_compare_wakeup (struct list_elem*, struct list_elem*, void* aux UNUSED);
-bool thread_compare_priority (struct list_elem*, struct list_elem*, void* aux UNUSED);
-bool thread_compare_priority_donor_priority (struct list_elem*, struct list_elem*, void* aux UNUSED);
+bool thread_compare_wakeup (struct list_elem *, struct list_elem *, void *aux UNUSED);
+bool thread_compare_priority (struct list_elem *, struct list_elem *, void *aux UNUSED);
+bool thread_compare_priority_donor_priority (struct list_elem *, struct list_elem *, void *aux UNUSED);
 #endif /* threads/thread.h */

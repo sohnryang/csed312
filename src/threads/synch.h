@@ -50,8 +50,7 @@ void cond_broadcast (struct condition *, struct lock *);
                                 :  \
                                 : "memory")
 
-
 /* Compare highest priority of semaphore's waiter  */
-bool semaphore_compare_priority (struct list_elem*, struct list_elem*, void* aux);
+bool semaphore_compare_priority (struct list_elem *, struct list_elem *, void *aux);
 
 #endif /* threads/synch.h */

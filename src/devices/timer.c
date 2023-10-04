@@ -95,20 +95,19 @@ timer_sleep (int64_t ticks)
   int64_t start = timer_ticks ();
   ASSERT (intr_get_level () == INTR_ON);
 
-  enum intr_level prev_intr_level = intr_disable();
-  struct thread* current_thread = thread_current();
+  enum intr_level prev_intr_level = intr_disable ();
+  struct thread *current_thread = thread_current ();
 
   current_thread->wakeup_ticks = start + ticks;
 
-  list_insert_ordered(
-    &sleeping_list,
-    &current_thread->elem,
-    thread_compare_wakeup,
-    NULL
-  );
+  list_insert_ordered (
+      &sleeping_list,
+      &current_thread->elem,
+      thread_compare_wakeup,
+      NULL);
 
-  thread_block();
-  intr_set_level(prev_intr_level);
+  thread_block ();
+  intr_set_level (prev_intr_level);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -188,20 +187,20 @@ timer_interrupt (struct intr_frame *args UNUSED)
   ticks++;
   thread_tick ();
 
-  struct thread* sleeping_list_front;
-  while(!list_empty(&sleeping_list))
-  {
-    sleeping_list_front = list_entry(list_front(&sleeping_list), struct thread, elem);
-    if (sleeping_list_front->wakeup_ticks <= ticks)
+  struct thread *sleeping_list_front;
+  while (!list_empty (&sleeping_list))
     {
-      list_pop_front(&sleeping_list);
-      thread_unblock(sleeping_list_front);
+      sleeping_list_front = list_entry (list_front (&sleeping_list), struct thread, elem);
+      if (sleeping_list_front->wakeup_ticks <= ticks)
+        {
+          list_pop_front (&sleeping_list);
+          thread_unblock (sleeping_list_front);
+        }
+      else
+        {
+          break;
+        }
     }
-    else
-    {
-      break;
-    }
-  }
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
