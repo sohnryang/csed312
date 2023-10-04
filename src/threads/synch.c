@@ -157,8 +157,10 @@ sema_self_test (void)
   printf ("done.\n");
 }
 
+/* Declare semaphore*/
+bool semaphore_compare_priority (struct list_elem*, struct list_elem*, void* aux UNUSED);
+
 /* Thread function used by sema_self_test(). */
-static void
 sema_test_helper (void *sema_)
 {
   struct semaphore *sema = sema_;
@@ -221,15 +223,15 @@ lock_acquire (struct lock *lock)
     if (lock->holder)
     {
       current_thread->wait = lock;                                 /* Wait for lock */
-      list_insert_ordered(&lock->holder->priority_donor,  \        /* Assign this thread on lock-holder's list*/
-                          &current_thread->priority_donor_elem, \ 
+      list_insert_ordered(&lock->holder->priority_donor,           /* Assign this thread on lock-holder's list*/
+                          &current_thread->priority_donor_elem, 
                           thread_compare_priority_donor_priority,  /* Order by their priority */
                           NULL);
       
       thread_donate_priority();       
     }
     sema_down (&lock->semaphore);     /* Get the lock */
-    lock->holder = current_thread();  /* Own the holder */
+    lock->holder = current_thread;    /* Own the holder */
   }
 }
 
@@ -381,17 +383,20 @@ cond_broadcast (struct condition *cond, struct lock *lock)
     cond_signal (cond, lock);
 }
 
-
 /* Comparing priority of waiting thread of semaphore */
 bool
 semaphore_compare_priority (struct list_elem* elem_l, struct list_elem* elem_r, void* aux UNUSED)
 {
   /* (Element's semaphore)'s highest priority waiting threads */
-  struct thread* thrd_l = list_entry(list_begin(&list_entry(elem_l, struct semaphore_elem, elem)->semaphore.waiters), struct thread, elem);
-  struct thread* thrd_r = list_entry(list_begin(&list_entry(elem_r, struct semaphore_elem, elem)->semaphore.waiters), struct thread, elem);
+  struct semaphore_elem* sema_elem_l = list_entry(elem_l, struct semaphore_elem, elem);
+  struct semaphore_elem* sema_elem_r = list_entry(elem_r, struct semaphore_elem, elem);
 
-  ASSERT(is_thread(thrd_l));
-  ASSERT(is_thread(thrd_r));
+  struct thread* thrd_l = list_entry(list_begin(&sema_elem_l->semaphore.waiters), struct thread, elem);
+  struct thread* thrd_r = list_entry(list_begin(&sema_elem_r->semaphore.waiters), struct thread, elem);
+
+  /* We should define `is_thread` on `thread.h` to check they are valid thread. */
+  // ASSERT(is_thread(thrd_l));
+  // ASSERT(is_thread(thrd_r));
 
   return thrd_l->priority > thrd_r->priority;
 }

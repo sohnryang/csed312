@@ -492,7 +492,11 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *)t + PGSIZE;
   t->priority = priority;
+  t->priority_original = priority;
   t->magic = THREAD_MAGIC;
+
+  t->wait = NULL;
+  list_init(&t->priority_donor);
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
@@ -632,12 +636,12 @@ thread_update_priority (void)
 {
   struct thread* current_thread = thread_current();
 
-  if (list_empty(&current_thread->donor))
+  if (list_empty(&current_thread->priority_donor))
   {
     return;
   }
 
-  struct thread* highest_donor_thread = list_entry(list_front(&current_thread->donor), struct thread, donor_elem);
+  struct thread* highest_donor_thread = list_entry(list_front(&current_thread->priority_donor), struct thread, priority_donor_elem);
   ASSERT(is_thread(highest_donor_thread));
 
   if (current_thread->priority < highest_donor_thread->priority)
@@ -650,7 +654,7 @@ thread_update_priority (void)
 void
 thread_donate_priority (void)
 {
-  struct thread* current_therad = therad_current();
+  struct thread* current_thread = thread_current();
   int current_thread_priority = current_thread->priority;
 
   ASSERT (current_thread != NULL);
@@ -688,7 +692,7 @@ thread_compare_priority (struct list_elem* elem_l, struct list_elem* elem_r, voi
   struct thread* thrd_r = list_entry(elem_r, struct thread, elem);
 
   ASSERT(is_thread(thrd_l));
-  ASSERT(is_thread(thrd_r));
+  ASSERT(is_thread(thrd_r)) ;
 
   return thrd_l->priority > thrd_r->priority;
 }

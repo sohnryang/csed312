@@ -40,8 +40,6 @@ void cond_init (struct condition *);
 void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
 void cond_broadcast (struct condition *, struct lock *);
-
-bool semaphore_compare_priority (struct list_elem*, struct list_elem*, void* aux UNUSED);
 /* Optimization barrier.
 
    The compiler will not reorder operations across an
@@ -51,5 +49,9 @@ bool semaphore_compare_priority (struct list_elem*, struct list_elem*, void* aux
                                 :  \
                                 :  \
                                 : "memory")
+
+
+/* Compare highest priority of semaphore's waiter  */
+bool semaphore_compare_priority (struct list_elem*, struct list_elem*, void* aux);
 
 #endif /* threads/synch.h */
