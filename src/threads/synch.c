@@ -122,7 +122,10 @@ sema_up (struct semaphore *sema)
       /* Re-order and wait the thread with just unblocked thread */
       if (thread_could_preempt ())
         {
-          thread_yield ();
+          if (intr_context ())
+            intr_yield_on_return ();
+          else
+            thread_yield ();
         }
     }
   else
