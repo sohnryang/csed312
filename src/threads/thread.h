@@ -24,6 +24,16 @@ typedef int tid_t;
 #define PRI_DEFAULT 31 /* Default priority. */
 #define PRI_MAX 63     /* Highest priority. */
 
+/* MLFQS schedulling constants. */
+#define MLFQS_NICE_DEFAULT 0           /* Default NICE value. */
+#define MLFQS_RECENT_CPU_DEFAULT 0     /* Default RECENT_CPU value. */
+#define MLFQS_LOAD_AVG_DEFAULT 0       /* Default LOAD_AVG value. */
+#define MLFQS_PRIORITY_UPDATE_FREQ 4   /* MLFQS scheduler priority update ticks*/
+
+/* MLFQS fixed-point types. */
+typedef int32_t fp_t;
+typedef int64_t fp_lt;
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -102,6 +112,10 @@ struct thread
   struct list priority_donor;           /* Remember which thread had donated priority to this. */
   struct list_elem priority_donor_elem; /* Element to be inserted in `priority_donor`*/
 
+   /* MLFQS Scheduler. */
+   int mlfqs_nice;
+   fp_t mlfqs_recent_cpu;
+
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
   uint32_t *pagedir; /* Page directory. */
@@ -141,6 +155,11 @@ void thread_foreach (thread_action_func *, void *);
 
 int thread_get_priority (void);
 void thread_set_priority (int);
+
+void thread_mlfqs_set_priority (struct thread *);
+void thread_mlfqs_set_recent_cpu (struct thread *);
+void thread_mlfqs_inc_recent_cpu (struct thread *);
+void thread_mlfqs_update_load_avg (struct thread *);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
