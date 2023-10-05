@@ -166,6 +166,7 @@ bool semaphore_compare_priority (struct list_elem *, struct list_elem *,
                                  void *aux UNUSED);
 
 /* Thread function used by sema_self_test(). */
+void
 sema_test_helper (void *sema_)
 {
   struct semaphore *sema = sema_;
