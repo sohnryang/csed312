@@ -45,12 +45,10 @@ void cond_broadcast (struct condition *, struct lock *);
    The compiler will not reorder operations across an
    optimization barrier.  See "Optimization Barriers" in the
    reference guide for more information.*/
-#define barrier() asm volatile ("" \
-                                :  \
-                                :  \
-                                : "memory")
+#define barrier() asm volatile ("" : : : "memory")
 
 /* Compare highest priority of semaphore's waiter  */
-bool semaphore_compare_priority (struct list_elem *, struct list_elem *, void *aux);
+bool semaphore_compare_priority (struct list_elem *, struct list_elem *,
+                                 void *aux);
 
 #endif /* threads/synch.h */

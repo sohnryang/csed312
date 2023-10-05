@@ -172,8 +172,7 @@ thread_print_stats (void)
    PRIORITY, but no actual priority scheduling is implemented.
    Priority scheduling is the goal of Problem 1-3. */
 tid_t
-thread_create (const char *name, int priority,
-               thread_func *function, void *aux)
+thread_create (const char *name, int priority, thread_func *function, void *aux)
 {
   struct thread *t;
   struct kernel_thread_frame *kf;
@@ -320,7 +319,8 @@ thread_yield (void)
   old_level = intr_disable ();
 
   if (cur != idle_thread)
-    list_insert_ordered (&ready_list, &cur->elem, thread_compare_priority, NULL);
+    list_insert_ordered (&ready_list, &cur->elem, thread_compare_priority,
+                         NULL);
 
   cur->status = THREAD_READY;
   schedule ();
@@ -336,8 +336,7 @@ thread_foreach (thread_action_func *func, void *aux)
 
   ASSERT (intr_get_level () == INTR_OFF);
 
-  for (e = list_begin (&all_list); e != list_end (&all_list);
-       e = list_next (e))
+  for (e = list_begin (&all_list); e != list_end (&all_list); e = list_next (e))
     {
       struct thread *t = list_entry (e, struct thread, allelem);
       func (t, aux);
@@ -377,81 +376,86 @@ thread_get_priority (void)
 
 /* MLFQS thread priority setting */
 void
-thread_mlfqs_set_priority (struct thread* t)
+thread_mlfqs_set_priority (struct thread *t)
 {
   ASSERT (thread_mlfqs == true);
 
   if (t != idle_thread)
-  {
-    fp_t mlfqs_priority = 0;
+    {
+      fp_t mlfqs_priority = 0;
 
-    /* (RECENT_CPU / 4) + (NICE * 2) */
-    mlfqs_priority = fp_add (fp_div (t->mlfqs_recent_cpu, 4 << FIXPOINT_SHFT), 
-                             fp_mul (t->mlfqs_nice << FIXPOINT_SHFT, 2 << FIXPOINT_SHFT));
-    
-    /* PRI_MAX - (_)*/
-    mlfqs_priority = fp_sub (PRI_MAX << FIXPOINT_SHFT, mlfqs_priority);
+      /* (RECENT_CPU / 4) + (NICE * 2) */
+      mlfqs_priority = fp_add (
+          fp_div (t->mlfqs_recent_cpu, 4 << FIXPOINT_SHFT),
+          fp_mul (t->mlfqs_nice << FIXPOINT_SHFT, 2 << FIXPOINT_SHFT));
 
-    /* Convert to integer */
-    mlfqs_priority = fp_to_int (mlfqs_priority);
+      /* PRI_MAX - (_)*/
+      mlfqs_priority = fp_sub (PRI_MAX << FIXPOINT_SHFT, mlfqs_priority);
 
-    /* Trim out of range */
-    if (mlfqs_priority < PRI_MIN)
-      t->priority = PRI_MIN;
-    else if (mlfqs_priority > PRI_MAX)
-      t->priority = PRI_MAX;
-    else
-      t->priority = mlfqs_priority;
-  }
+      /* Convert to integer */
+      mlfqs_priority = fp_to_int (mlfqs_priority);
+
+      /* Trim out of range */
+      if (mlfqs_priority < PRI_MIN)
+        t->priority = PRI_MIN;
+      else if (mlfqs_priority > PRI_MAX)
+        t->priority = PRI_MAX;
+      else
+        t->priority = mlfqs_priority;
+    }
 }
 
 /* MLFQS thread `mlfqs_recent_cpu` value setting */
 void
-thread_mlfqs_set_recent_cpu (struct thread* t)
+thread_mlfqs_set_recent_cpu (struct thread *t)
 {
   ASSERT (thread_mlfqs == true);
 
   if (t != idle_thread)
-  {
-    fp_t mlfqs_recent_cpu = 0;
+    {
+      fp_t mlfqs_recent_cpu = 0;
 
-    /* (LOAD_AVG * 2) / ((LOAD_AVG * 2) + 1)*/
-    mlfqs_recent_cpu = fp_div (fp_mul (mlfqs_global_load_avg, 2 << FIXPOINT_SHFT),
-                               fp_add (fp_mul (mlfqs_global_load_avg, 2 << FIXPOINT_SHFT), 1 << FIXPOINT_SHFT));
-    
-    /* (RECENT_CPU) * (_) */
-    mlfqs_recent_cpu = fp_mul (mlfqs_recent_cpu, t->mlfqs_recent_cpu);
+      /* (LOAD_AVG * 2) / ((LOAD_AVG * 2) + 1)*/
+      mlfqs_recent_cpu
+          = fp_div (fp_mul (mlfqs_global_load_avg, 2 << FIXPOINT_SHFT),
+                    fp_add (fp_mul (mlfqs_global_load_avg, 2 << FIXPOINT_SHFT),
+                            1 << FIXPOINT_SHFT));
 
-    /* (NICE) + (_)*/
-    mlfqs_recent_cpu = fp_add (mlfqs_recent_cpu, t->mlfqs_nice << FIXPOINT_SHFT);
+      /* (RECENT_CPU) * (_) */
+      mlfqs_recent_cpu = fp_mul (mlfqs_recent_cpu, t->mlfqs_recent_cpu);
 
-    t->mlfqs_recent_cpu = mlfqs_recent_cpu;
-  }
+      /* (NICE) + (_)*/
+      mlfqs_recent_cpu
+          = fp_add (mlfqs_recent_cpu, t->mlfqs_nice << FIXPOINT_SHFT);
+
+      t->mlfqs_recent_cpu = mlfqs_recent_cpu;
+    }
 }
 
 /* MLFQS thread `mlfqs_recent_cpu` increase */
 void
-thread_mlfqs_inc_recent_cpu (struct thread* t)
+thread_mlfqs_inc_recent_cpu (struct thread *t)
 {
   ASSERT (thread_mlfqs == true);
 
   if (t != idle_thread)
-  {
-    t->mlfqs_recent_cpu = fp_add (t->mlfqs_recent_cpu, 1 << FIXPOINT_SHFT);
-  }
+    {
+      t->mlfqs_recent_cpu = fp_add (t->mlfqs_recent_cpu, 1 << FIXPOINT_SHFT);
+    }
 }
 
 /* MLFQS thread global value `mlfqs_global_load_avg` value update */
 void
-thread_mlfqs_update_load_avg (struct thread* t)
+thread_mlfqs_update_load_avg (struct thread *t)
 {
   ASSERT (thread_mlfqs == true);
 
   int thread_ready_cnt = list_size (&ready_list) + (int)(t != idle_thread);
 
   /* (THREAD_READY_CNT) * (1/60) + (MLFQS_GLOBAL_LOAD_AVG) * (59/60) */
-  mlfqs_global_load_avg = fp_add (fp_mul (mlfqs_global_load_avg, FIFTYNINE_SIXTIETH), 
-                                  fp_mul (thread_ready_cnt << FIXPOINT_SHFT, ONE_SIXTIETH));
+  mlfqs_global_load_avg
+      = fp_add (fp_mul (mlfqs_global_load_avg, FIFTYNINE_SIXTIETH),
+                fp_mul (thread_ready_cnt << FIXPOINT_SHFT, ONE_SIXTIETH));
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -461,7 +465,7 @@ thread_set_nice (int nice UNUSED)
   ASSERT (thread_mlfqs == true);
 
   enum intr_level old_level = intr_disable ();
-  struct thread* current_thread = thread_current ();
+  struct thread *current_thread = thread_current ();
 
   current_thread->mlfqs_nice = nice;
   thread_mlfqs_set_priority (current_thread);
@@ -477,12 +481,12 @@ thread_get_nice (void)
   ASSERT (thread_mlfqs == true);
 
   enum intr_level old_level = intr_disable ();
-  struct thread* current_thread = thread_current ();
+  struct thread *current_thread = thread_current ();
 
   int mlfqs_nice = current_thread->mlfqs_nice;
-  
-  intr_set_level(old_level);
-  
+
+  intr_set_level (old_level);
+
   return mlfqs_nice;
 }
 
@@ -493,7 +497,8 @@ thread_get_load_avg (void)
   ASSERT (thread_mlfqs == true);
 
   enum intr_level old_level = intr_disable ();
-  int mlfqs_load_avg = fp_rnd_int (fp_mul (mlfqs_global_load_avg, 100 << FIXPOINT_SHFT));
+  int mlfqs_load_avg
+      = fp_rnd_int (fp_mul (mlfqs_global_load_avg, 100 << FIXPOINT_SHFT));
 
   intr_set_level (old_level);
 
@@ -506,11 +511,12 @@ thread_get_recent_cpu (void)
 {
   ASSERT (thread_mlfqs == true);
   enum intr_level old_level = intr_disable ();
-  struct thread* current_thread = thread_current ();
+  struct thread *current_thread = thread_current ();
 
-  int mlfqs_recent_cpu = fp_rnd_int (fp_mul (current_thread->mlfqs_recent_cpu, 100 << FIXPOINT_SHFT));
+  int mlfqs_recent_cpu = fp_rnd_int (
+      fp_mul (current_thread->mlfqs_recent_cpu, 100 << FIXPOINT_SHFT));
 
-  intr_set_level(old_level);
+  intr_set_level (old_level);
 
   return mlfqs_recent_cpu;
 }
@@ -549,10 +555,7 @@ idle (void *idle_started_ UNUSED)
 
          See [IA32-v2a] "HLT", [IA32-v2b] "STI", and [IA32-v3a]
          7.11.1 "HLT Instruction". */
-      asm volatile ("sti; hlt"
-                    :
-                    :
-                    : "memory");
+      asm volatile ("sti; hlt" : : : "memory");
     }
 }
 
@@ -577,8 +580,7 @@ running_thread (void)
      down to the start of a page.  Because `struct thread' is
      always at the beginning of a page and the stack pointer is
      somewhere in the middle, this locates the curent thread. */
-  asm ("mov %%esp, %0"
-       : "=g"(esp));
+  asm ("mov %%esp, %0" : "=g"(esp));
   return pg_round_down (esp);
 }
 
@@ -738,8 +740,10 @@ uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 bool
 thread_could_preempt (void)
 {
-  if (!list_empty (&ready_list) &&                                                                        /* Waiting threads exist */
-      thread_current ()->priority < list_entry (list_front (&ready_list), struct thread, elem)->priority) /* Has higher priority than current thread */
+  if (!list_empty (&ready_list) && /* Waiting threads exist */
+      thread_current ()->priority
+          < list_entry (list_front (&ready_list), struct thread, elem)
+                ->priority) /* Has higher priority than current thread */
     {
       return true;
     }
@@ -757,7 +761,9 @@ thread_update_priority (void)
       return;
     }
 
-  struct thread *highest_donor_thread = list_entry (list_front (&current_thread->priority_donor), struct thread, priority_donor_elem);
+  struct thread *highest_donor_thread
+      = list_entry (list_front (&current_thread->priority_donor), struct thread,
+                    priority_donor_elem);
   ASSERT (is_thread (highest_donor_thread));
 
   if (current_thread->priority < highest_donor_thread->priority)
@@ -790,7 +796,8 @@ thread_donate_priority (void)
 }
 /* struct thread member variable compare functions */
 bool
-thread_compare_wakeup (const struct list_elem *elem_l, const struct list_elem *elem_r, void *aux UNUSED)
+thread_compare_wakeup (const struct list_elem *elem_l,
+                       const struct list_elem *elem_r, void *aux UNUSED)
 {
   struct thread *thrd_l = list_entry (elem_l, struct thread, elem);
   struct thread *thrd_r = list_entry (elem_r, struct thread, elem);
@@ -802,7 +809,8 @@ thread_compare_wakeup (const struct list_elem *elem_l, const struct list_elem *e
 }
 
 bool
-thread_compare_priority (const struct list_elem *elem_l, const struct list_elem *elem_r, void *aux UNUSED)
+thread_compare_priority (const struct list_elem *elem_l,
+                         const struct list_elem *elem_r, void *aux UNUSED)
 {
   struct thread *thrd_l = list_entry (elem_l, struct thread, elem);
   struct thread *thrd_r = list_entry (elem_r, struct thread, elem);
@@ -814,10 +822,14 @@ thread_compare_priority (const struct list_elem *elem_l, const struct list_elem 
 }
 
 bool
-thread_compare_priority_donor_priority (const struct list_elem *elem_l, const struct list_elem *elem_r, void *aux UNUSED)
+thread_compare_priority_donor_priority (const struct list_elem *elem_l,
+                                        const struct list_elem *elem_r,
+                                        void *aux UNUSED)
 {
-  struct thread *thrd_l = list_entry (elem_l, struct thread, priority_donor_elem);
-  struct thread *thrd_r = list_entry (elem_r, struct thread, priority_donor_elem);
+  struct thread *thrd_l
+      = list_entry (elem_l, struct thread, priority_donor_elem);
+  struct thread *thrd_r
+      = list_entry (elem_r, struct thread, priority_donor_elem);
 
   ASSERT (is_thread (thrd_l));
   ASSERT (is_thread (thrd_r));

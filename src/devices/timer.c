@@ -100,11 +100,8 @@ timer_sleep (int64_t ticks)
 
   current_thread->wakeup_ticks = start + ticks;
 
-  list_insert_ordered (
-      &sleeping_list,
-      &current_thread->elem,
-      thread_compare_wakeup,
-      NULL);
+  list_insert_ordered (&sleeping_list, &current_thread->elem,
+                       thread_compare_wakeup, NULL);
 
   thread_block ();
   intr_set_level (prev_intr_level);
@@ -199,13 +196,14 @@ timer_interrupt (struct intr_frame *args UNUSED)
       if (ticks % TIMER_FREQ == 0)
         {
           thread_foreach (thread_mlfqs_set_recent_cpu, NULL);
-          thread_mlfqs_update_load_avg (thread_current());
+          thread_mlfqs_update_load_avg (thread_current ());
         }
     }
 
   while (!list_empty (&sleeping_list))
     {
-      sleeping_list_front = list_entry (list_front (&sleeping_list), struct thread, elem);
+      sleeping_list_front
+          = list_entry (list_front (&sleeping_list), struct thread, elem);
       if (sleeping_list_front->wakeup_ticks <= ticks)
         {
           list_pop_front (&sleeping_list);
