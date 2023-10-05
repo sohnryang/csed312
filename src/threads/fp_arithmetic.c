@@ -40,11 +40,11 @@ fp_sub (fp_t x, fp_t y)
 fp_t
 fp_mul (fp_t x, fp_t y)
 {
-  return (((fp_lt)x) * y) >> F;
+  return (((fp_lt)x) * y) >> FIXPOINT_SHFT;
 }
 
 fp_t
 fp_div (fp_t x, fp_t y)
 {
-  return (((fp_lt)x) << F) / y;
+  return (((fp_lt)x) << FIXPOINT_SHFT) / y;
 }
