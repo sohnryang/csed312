@@ -790,7 +790,7 @@ thread_donate_priority (void)
 }
 /* struct thread member variable compare functions */
 bool
-thread_compare_wakeup (struct list_elem *elem_l, struct list_elem *elem_r, void *aux UNUSED)
+thread_compare_wakeup (const struct list_elem *elem_l, const struct list_elem *elem_r, void *aux UNUSED)
 {
   struct thread *thrd_l = list_entry (elem_l, struct thread, elem);
   struct thread *thrd_r = list_entry (elem_r, struct thread, elem);
@@ -802,7 +802,7 @@ thread_compare_wakeup (struct list_elem *elem_l, struct list_elem *elem_r, void 
 }
 
 bool
-thread_compare_priority (struct list_elem *elem_l, struct list_elem *elem_r, void *aux UNUSED)
+thread_compare_priority (const struct list_elem *elem_l, const struct list_elem *elem_r, void *aux UNUSED)
 {
   struct thread *thrd_l = list_entry (elem_l, struct thread, elem);
   struct thread *thrd_r = list_entry (elem_r, struct thread, elem);
@@ -814,7 +814,7 @@ thread_compare_priority (struct list_elem *elem_l, struct list_elem *elem_r, voi
 }
 
 bool
-thread_compare_priority_donor_priority (struct list_elem *elem_l, struct list_elem *elem_r, void *aux UNUSED)
+thread_compare_priority_donor_priority (const struct list_elem *elem_l, const struct list_elem *elem_r, void *aux UNUSED)
 {
   struct thread *thrd_l = list_entry (elem_l, struct thread, priority_donor_elem);
   struct thread *thrd_r = list_entry (elem_r, struct thread, priority_donor_elem);

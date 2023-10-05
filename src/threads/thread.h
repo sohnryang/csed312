@@ -172,7 +172,7 @@ void thread_update_priority (void);
 void thread_donate_priority (void);
 
 /* struct thread member variable comparing functions */
-bool thread_compare_wakeup (struct list_elem *, struct list_elem *, void *aux UNUSED);
-bool thread_compare_priority (struct list_elem *, struct list_elem *, void *aux UNUSED);
-bool thread_compare_priority_donor_priority (struct list_elem *, struct list_elem *, void *aux UNUSED);
+bool thread_compare_wakeup (const struct list_elem *, const struct list_elem *, void *aux UNUSED);
+bool thread_compare_priority (const struct list_elem *, const struct list_elem *, void *aux UNUSED);
+bool thread_compare_priority_donor_priority (const struct list_elem *, const struct list_elem *, void *aux UNUSED);
 #endif /* threads/thread.h */
