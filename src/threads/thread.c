@@ -761,6 +761,9 @@ thread_update_priority (void)
 {
   struct thread *current_thread = thread_current ();
 
+  /* First restore their original priority before start chaining update. */
+  current_thread->priority = current_thread->priority_original;
+
   if (list_empty (&current_thread->priority_donor))
     {
       return;
