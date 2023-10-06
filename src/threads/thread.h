@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 
+#include "threads/fp_arithmetic.h"
+
 /* States in a thread's life cycle. */
 enum thread_status
 {
@@ -30,10 +32,6 @@ typedef int tid_t;
 #define MLFQS_LOAD_AVG_DEFAULT 0   /* Default LOAD_AVG value. */
                                    /* MLFQS scheduler priority update ticks*/
 #define MLFQS_PRIORITY_UPDATE_FREQ 4
-
-/* MLFQS fixed-point types. */
-typedef int32_t fp_t;
-typedef int64_t fp_lt;
 
 /* A kernel thread or user process.
 
