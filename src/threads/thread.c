@@ -794,6 +794,25 @@ thread_donate_priority (void)
 
   return;
 }
+
+/* Remove donor thread's lock if they have same lock.*/
+void
+thread_lock_clear (struct lock *lck)
+{
+  struct thread *current_thread = thread_current ();
+
+  for (struct list_elem *elem = list_begin (&current_thread->priority_donor);
+       elem != list_end (&current_thread->priority_donor);
+       elem = list_next (elem))
+    {
+      if (list_entry (elem, struct thread, priority_donor_elem)->wait == lck)
+        {
+          list_remove (&list_entry (elem, struct thread, priority_donor_elem)
+                            ->priority_donor_elem);
+        }
+    }
+}
+
 /* struct thread member variable compare functions */
 bool
 thread_compare_wakeup (const struct list_elem *elem_l,

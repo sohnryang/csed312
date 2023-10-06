@@ -25,11 +25,12 @@ typedef int tid_t;
 #define PRI_MAX 63     /* Highest priority. */
 
 /* MLFQS schedulling constants. */
-#define MLFQS_NICE_DEFAULT 0         /* Default NICE value. */
-#define MLFQS_RECENT_CPU_DEFAULT 0   /* Default RECENT_CPU value. */
-#define MLFQS_LOAD_AVG_DEFAULT 0     /* Default LOAD_AVG value. */
-#define MLFQS_PRIORITY_UPDATE_FREQ 4 /* MLFQS scheduler priority update        \
-                                        ticks*/
+#define MLFQS_NICE_DEFAULT 0       /* Default NICE value. */
+#define MLFQS_RECENT_CPU_DEFAULT 0 /* Default RECENT_CPU value. */
+#define MLFQS_LOAD_AVG_DEFAULT 0   /* Default LOAD_AVG value. */
+#define MLFQS_PRIORITY_UPDATE_FREQ                                             \
+  4 /* MLFQS scheduler priority update                                         \
+       ticks*/
 
 /* MLFQS fixed-point types. */
 typedef int32_t fp_t;
@@ -174,6 +175,7 @@ bool thread_could_preempt (void);
 void thread_update_priority (void);
 void thread_donate_priority (void);
 
+void thread_lock_clear (struct lock *);
 /* struct thread member variable comparing functions */
 bool thread_compare_wakeup (const struct list_elem *, const struct list_elem *,
                             void *aux UNUSED);
