@@ -405,6 +405,20 @@ thread_mlfqs_set_priority (struct thread *t)
     }
 }
 
+/* Set priorities for all threads. */
+void
+thread_mlfqs_set_priority_all (void)
+{
+  struct list_elem *el;
+  struct thread *t;
+  for (el = list_begin (&all_list); el != list_end (&all_list);
+       el = list_next (el))
+    {
+      t = list_entry (el, struct thread, allelem);
+      thread_mlfqs_set_priority (t);
+    }
+}
+
 /* MLFQS thread `mlfqs_recent_cpu` value setting */
 void
 thread_mlfqs_set_recent_cpu (struct thread *t)
@@ -429,6 +443,19 @@ thread_mlfqs_set_recent_cpu (struct thread *t)
           = fp_add (mlfqs_recent_cpu, t->mlfqs_nice << FIXPOINT_SHFT);
 
       t->mlfqs_recent_cpu = mlfqs_recent_cpu;
+    }
+}
+
+void
+thread_mlfqs_set_recent_cpu_all (void)
+{
+  struct list_elem *el;
+  struct thread *t;
+  for (el = list_begin (&all_list); el != list_end (&all_list);
+       el = list_next (el))
+    {
+      t = list_entry (el, struct thread, allelem);
+      thread_mlfqs_set_recent_cpu (t);
     }
 }
 

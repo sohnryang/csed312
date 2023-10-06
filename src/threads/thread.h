@@ -160,9 +160,11 @@ int thread_get_priority (void);
 void thread_set_priority (int);
 
 void thread_mlfqs_set_priority (struct thread *);
+void thread_mlfqs_set_priority_all (void);
 void thread_mlfqs_set_recent_cpu (struct thread *);
 void thread_mlfqs_inc_recent_cpu (struct thread *);
 void thread_mlfqs_update_load_avg (struct thread *);
+void thread_mlfqs_set_recent_cpu_all (void);
 
 int thread_get_nice (void);
 void thread_set_nice (int);
