@@ -209,6 +209,11 @@ thread_create (const char *name, int priority, thread_func *function, void *aux)
   /* Add to run queue. */
   thread_unblock (t);
 
+  /* Thread should compare its priority -
+     Even when they are created. */
+  if (thread_could_preempt ())
+    thread_yield ();
+
   return tid;
 }
 
