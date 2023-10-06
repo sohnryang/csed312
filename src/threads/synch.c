@@ -241,7 +241,9 @@ lock_acquire (struct lock *lock)
 
           thread_donate_priority ();
         }
-      sema_down (&lock->semaphore);  /* Get the lock */
+      sema_down (&lock->semaphore); /* Get the lock */
+
+      current_thread->wait = NULL;   /* Stop waiting (current thread owns) */
       lock->holder = current_thread; /* Own the holder */
     }
 }
@@ -285,7 +287,8 @@ lock_release (struct lock *lock)
     }
   else
     {
-      // Remove the waiting threads that has same lock with.
+      thread_lock_clear (lock); /* Remove lock with current one. */
+
       thread_update_priority ();  /* After un-'lock' ing some thread, update
                                      their priority. */
       sema_up (&lock->semaphore); /* Not owning lock anymore*/
@@ -376,6 +379,7 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
 
   if (!list_empty (&cond->waiters))
     {
+      list_sort (&cond->waiters, semaphore_compare_priority, NULL);
       sema_up (&list_entry (list_pop_front (&cond->waiters),
                             struct semaphore_elem, elem)
                     ->semaphore);
