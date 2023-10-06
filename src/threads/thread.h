@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 
+#include "threads/fp_arithmetic.h"
+
 /* States in a thread's life cycle. */
 enum thread_status
 {
@@ -28,13 +30,8 @@ typedef int tid_t;
 #define MLFQS_NICE_DEFAULT 0       /* Default NICE value. */
 #define MLFQS_RECENT_CPU_DEFAULT 0 /* Default RECENT_CPU value. */
 #define MLFQS_LOAD_AVG_DEFAULT 0   /* Default LOAD_AVG value. */
-#define MLFQS_PRIORITY_UPDATE_FREQ                                             \
-  4 /* MLFQS scheduler priority update                                         \
-       ticks*/
-
-/* MLFQS fixed-point types. */
-typedef int32_t fp_t;
-typedef int64_t fp_lt;
+                                   /* MLFQS scheduler priority update ticks*/
+#define MLFQS_PRIORITY_UPDATE_FREQ 4
 
 /* A kernel thread or user process.
 
@@ -161,9 +158,11 @@ int thread_get_priority (void);
 void thread_set_priority (int);
 
 void thread_mlfqs_set_priority (struct thread *);
+void thread_mlfqs_set_priority_all (void);
 void thread_mlfqs_set_recent_cpu (struct thread *);
 void thread_mlfqs_inc_recent_cpu (struct thread *);
 void thread_mlfqs_update_load_avg (struct thread *);
+void thread_mlfqs_set_recent_cpu_all (void);
 
 int thread_get_nice (void);
 void thread_set_nice (int);

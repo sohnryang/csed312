@@ -48,7 +48,7 @@ void cond_broadcast (struct condition *, struct lock *);
 #define barrier() asm volatile ("" : : : "memory")
 
 /* Compare highest priority of semaphore's waiter  */
-bool semaphore_compare_priority (struct list_elem *, struct list_elem *,
-                                 void *aux);
+bool semaphore_compare_priority (const struct list_elem *,
+                                 const struct list_elem *, void *aux);
 
 #endif /* threads/synch.h */

@@ -164,11 +164,8 @@ sema_self_test (void)
   printf ("done.\n");
 }
 
-/* Declare semaphore*/
-bool semaphore_compare_priority (struct list_elem *, struct list_elem *,
-                                 void *aux UNUSED);
-
 /* Thread function used by sema_self_test(). */
+void
 sema_test_helper (void *sema_)
 {
   struct semaphore *sema = sema_;
@@ -404,8 +401,8 @@ cond_broadcast (struct condition *cond, struct lock *lock)
 
 /* Comparing priority of waiting thread of semaphore */
 bool
-semaphore_compare_priority (struct list_elem *elem_l, struct list_elem *elem_r,
-                            void *aux UNUSED)
+semaphore_compare_priority (const struct list_elem *elem_l,
+                            const struct list_elem *elem_r, void *aux UNUSED)
 {
   /* (Element's semaphore)'s highest priority waiting threads */
   struct semaphore_elem *sema_elem_l

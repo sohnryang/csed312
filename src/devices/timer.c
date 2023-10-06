@@ -191,11 +191,11 @@ timer_interrupt (struct intr_frame *args UNUSED)
       thread_mlfqs_inc_recent_cpu (thread_current ());
       if (ticks % MLFQS_PRIORITY_UPDATE_FREQ == 0)
         {
-          thread_foreach (thread_mlfqs_set_priority, NULL);
+          thread_mlfqs_set_priority_all ();
         }
       if (ticks % TIMER_FREQ == 0)
         {
-          thread_foreach (thread_mlfqs_set_recent_cpu, NULL);
+          thread_mlfqs_set_recent_cpu_all ();
           thread_mlfqs_update_load_avg (thread_current ());
         }
     }
