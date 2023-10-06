@@ -835,8 +835,9 @@ void
 thread_lock_clear (struct lock *lck)
 {
   struct thread *current_thread = thread_current ();
+  struct list_elem *elem;
 
-  for (struct list_elem *elem = list_begin (&current_thread->priority_donor);
+  for (elem = list_begin (&current_thread->priority_donor);
        elem != list_end (&current_thread->priority_donor);
        elem = list_next (elem))
     {
