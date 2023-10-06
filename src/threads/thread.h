@@ -25,11 +25,11 @@ typedef int tid_t;
 #define PRI_MAX 63     /* Highest priority. */
 
 /* MLFQS schedulling constants. */
-#define MLFQS_NICE_DEFAULT 0         /* Default NICE value. */
-#define MLFQS_RECENT_CPU_DEFAULT 0   /* Default RECENT_CPU value. */
-#define MLFQS_LOAD_AVG_DEFAULT 0     /* Default LOAD_AVG value. */
-#define MLFQS_PRIORITY_UPDATE_FREQ 4 /* MLFQS scheduler priority update        \
-                                        ticks*/
+#define MLFQS_NICE_DEFAULT 0       /* Default NICE value. */
+#define MLFQS_RECENT_CPU_DEFAULT 0 /* Default RECENT_CPU value. */
+#define MLFQS_LOAD_AVG_DEFAULT 0   /* Default LOAD_AVG value. */
+                                   /* MLFQS scheduler priority update ticks*/
+#define MLFQS_PRIORITY_UPDATE_FREQ 4
 
 /* MLFQS fixed-point types. */
 typedef int32_t fp_t;
