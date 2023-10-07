@@ -501,7 +501,8 @@ thread_set_nice (int nice UNUSED)
 
   current_thread->mlfqs_nice = nice;
   thread_mlfqs_set_priority (current_thread);
-  thread_could_preempt ();
+  if (thread_could_preempt ())
+    thread_yield ();
 
   intr_set_level (old_level);
 }
