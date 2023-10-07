@@ -29,6 +29,15 @@
 
 ### Advanced Scheduler
 
+구현한 MLFQS scheduler는 일정 시간마다 실시간으로 priority를 업데이트하는 스케줄러이다. 이를 위해, `timer_interrupt` 함수에 일정 틱마다 우선순위를 결정하는 데 필요한 값들을 설정하도록 구현했다. (기존에 구현된 Priority scheduler에서 사용하던 `thread_set_priority`와 같은 함수는 사용하지 않는다.)
+
+* 매 tick마다 현재 스레드의 `recent_cpu`값을 증가시킨다.
+
+* `MLFQS_PRIORITY_UPDATE_FREQ` (4) tick마다 모든 스레드의 priority를 업데이트한다.
+* `TIMER_FREQ`(100) tick마다 `load_avg`를 이동 평균을 계산하여 갱신하고, 모든 스레드의 `recent_cpu` 값을 재조정한다.
+
+계산 과정에서 소수 값이 필요할 수 있으며, (최종적으로 계산된 priority는 소수 값을 round하여 `int`로 사용하게 된다), 소수 값을 나타내기 위해 fixed-point notation을 나타내기 위해 `fp_arithmetic.h` 에 `int32_t`와 `int64_t`를 각각 `fp_t`와 `fp_lt`로 정의했다. 또한, 간단한 정수를 곱하거나 나누는 경우가 아닐 때 코드를 간결하게 구성하기 위해 `FIFTYNINE_SIXTIETH`와 `ONE_SIXTIETH`를 미리 정의하였다.
+
 ## Discussion
 
 ### Priority Check in Condition Variables
