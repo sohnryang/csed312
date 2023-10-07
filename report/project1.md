@@ -10,6 +10,12 @@
 
 ## Discussion
 
+### Priority Check in Condition Variables
+
+`cond_signal`에서 `waiters` 리스트에 있는 `semaphore_elem` 원소를 꺼낼 때, 세마포어 간의 우선순위를 고려하지 않는 버그가 발생하였다. 해당 버그를 수정하기 위하여 두 세마포어에 대해, 각 세마포어를 기다리는 스레드 중 가장 우선순위가 높은 것끼리 비교하는 `semaphore_compare_priority` 함수를 구현하였고, 이 함수에 따라 세마포어 리스트를 정렬하는 것으로 해결하였다.
+
+해당 버그는 커밋 `c8797d6`에서 수정되었다.
+
 ### Interrupt Check in `sema_up`
 
 핀토스의 `sema_up` 함수 주석에 나와 있듯, `sema_up` 함수는 인터럽트 핸들러에서 실행될 수도 있다. 초기 구현에서는 만약 세마포어를 기다리고 있다가 unblock된 스레드가 현재 스레드보다 우선순위가 높을 경우, `thread_yield` 함수를 실행해 preemption이 일어나게 만들었다.
