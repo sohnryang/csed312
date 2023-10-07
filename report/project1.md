@@ -4,6 +4,27 @@
 
 ### Alarm Clock
 
+기존의 Alarm clock 구현은 busy wait 방식으로,  thread가 CPU를 점유하며 tick을 기다리는 방법이었다. 이를 CPU를 점유하지 않는 방법으로 재구현하기 위해, 현재 스레드를 block하여 계속 스케줄링 당하지 않도록 구현했다.
+
+새로 구현한 alarm clock의 기능은 다음과 같이 동작한다.
+
+* `timer_sleep`함수가 호출된다. (`devices/timer.c`)
+
+  * `timer_sleep`함수가 호출되면, 현재 스레드의 `wakeup_ticks`를 스레드가 unblock되어야 할 시간으로 설정한다.
+
+  * 이후, `sleeping_list`에 `wakeup_ticks`가 작은 순서대로 삽입한다. ($O(n)$의 시간 소요.)
+    * 이를 비교하기 위한 함수로 `thread_compare_wakeup`을 구현하였다.
+
+  * 현재 스레드를 block한다.
+
+* `timer_inturrupt`가 호출된다. (`devices/timer.c`)
+
+  * `tick`을 증가시키고,
+  * `sleeping_list`가 비어있지 않는 한
+    * 해당 list의  `wakeup_ticks` 가 현재 `tick`보다 작거나 같은 스레드를 `sleeping_list`에서 제거하고 unblock한다. ($O(1)$의 시간 소요.)
+
+`sleeping_list`는 block된 스레드들로 구성되어 있기 때문에 CPU에 의해 스케쥴되지 않는다. 다른 스레드에게 CPU를 양도할 수 있게 된다.
+
 ### Priority Scheduler
 
 ### Advanced Scheduler
