@@ -4,24 +4,22 @@
 
 ### Alarm Clock
 
-기존의 Alarm clock 구현은 busy wait 방식으로,  thread가 CPU를 점유하며 tick을 기다리는 방법이었다. 이를 CPU를 점유하지 않는 방법으로 재구현하기 위해, 현재 스레드를 block하여 계속 스케줄링 당하지 않도록 구현했다.
+기존의 Alarm clock 구현은 busy wait 방식으로,  thread가 CPU를 점유하며 tick을 기다리는 방법이었다. 이를 CPU를 점유하지 않는 방법으로 재구현하기 위해, 현재 스레드를 block하여 계속 스케줄링 당하지 않도록 구현했다. (커밋 `074d7e5` 참고)
+
+각 스레드가 깨어날 시간을 저장하기 위하여 `struct thread`에 `int64_t wakeup_ticks` 변수를 만들어서 저장했다.
 
 새로 구현한 alarm clock의 기능은 다음과 같이 동작한다.
 
 * `timer_sleep`함수가 호출된다. (`devices/timer.c`)
-
   * `timer_sleep`함수가 호출되면, 현재 스레드의 `wakeup_ticks`를 스레드가 unblock되어야 할 시간으로 설정한다.
-
   * 이후, `sleeping_list`에 `wakeup_ticks`가 작은 순서대로 삽입한다. ($O(n)$의 시간 소요.)
-    * 이를 비교하기 위한 함수로 `thread_compare_wakeup`을 구현하였다.
-
+    * 이를 비교하기 위한 함수로 `thread_compare_wakeup`을 구현하였다. 리스트 내에 들어간 `list_elem`을 비교하며, `list_elem`으로부터 구조체를 역참조할 수 있게 하는 매크로인 `list_entry`를 사용해서 `thread`를 얻고, 이 `wakeup_ticks`를 비교한다. `list_entry`가 역참조 할 때 메모리의 offset을 계산하기 때문에 스레드를 구한 후 `is_thread`를 사용하여 검증을 해야 안전하다.
   * 현재 스레드를 block한다.
-
 * `timer_inturrupt`가 호출된다. (`devices/timer.c`)
 
   * `tick`을 증가시키고,
   * `sleeping_list`가 비어있지 않는 한
-    * 해당 list의  `wakeup_ticks` 가 현재 `tick`보다 작거나 같은 스레드를 `sleeping_list`에서 제거하고 unblock한다. ($O(1)$의 시간 소요.)
+    * 해당 list의  `wakeup_ticks` 가 현재 `tick`보다 작거나 같은 스레드를 `sleeping_list`에서 제거하고 unblock한다. ($O(1)$의 시간 소요. - 앞에서부터 하나씩 제거가 가능하다.)
 
 `sleeping_list`는 block된 스레드들로 구성되어 있기 때문에 CPU에 의해 스케쥴되지 않는다. 다른 스레드에게 CPU를 양도할 수 있게 된다.
 
@@ -47,14 +45,21 @@ Design report에서 설명했듯, 핀토스의 lock을 단순히 priority schedu
 
 ### Advanced Scheduler
 
-구현한 MLFQS scheduler는 일정 시간마다 실시간으로 priority를 업데이트하는 스케줄러이다. 이를 위해, `timer_interrupt` 함수에 일정 틱마다 우선순위를 결정하는 데 필요한 값들을 설정하도록 구현했다. (기존에 구현된 Priority scheduler에서 사용하던 `thread_set_priority`와 같은 함수는 사용하지 않는다.)
+구현한 MLFQS scheduler는 일정 시간마다 실시간으로 priority를 업데이트하는 스케줄러이다. 이를 위해, `timer_interrupt` 함수에 일정 틱마다 우선순위를 결정하는 데 필요한 값들을 설정하도록 구현했으며, 연산에 필요한 스레드와 관련되있는 상수를 `MLFQS_[NAME]`의 형태로 `thread.h`에 정의하였다. (커밋 `f26f860` 참고, Bug fix: 커밋 `c3afce5` 참고)
 
-* 매 tick마다 현재 스레드의 `recent_cpu`값을 증가시킨다.
+기존에 구현된 Priority scheduler에서 사용하던 `thread_set_priority`함수는 사용하지 않는다.
 
-* `MLFQS_PRIORITY_UPDATE_FREQ` (4) tick마다 모든 스레드의 priority를 업데이트한다.
-* `TIMER_FREQ`(100) tick마다 `load_avg`를 이동 평균을 계산하여 갱신하고, 모든 스레드의 `recent_cpu` 값을 재조정한다.
+* 매 tick마다 현재 스레드의 `recent_cpu`값을 증가시킨다 - `thread_mlfqs_inc_recent_cpu`
+* `MLFQS_PRIORITY_UPDATE_FREQ` (4) tick마다 모든 스레드의 priority를 업데이트한다. - `thread_mlfqs_set_priority`
+* `TIMER_FREQ`(100) tick마다 `load_avg`를 최근 60개 구간의 구간 이동 평균을 계산하여 갱신하고, 모든 스레드의 `recent_cpu` 값을 재조정한다. - `thread_mlfqs_load_avg`, `thread_foreach`
 
-계산 과정에서 소수 값이 필요할 수 있으며, (최종적으로 계산된 priority는 소수 값을 round하여 `int`로 사용하게 된다), 소수 값을 나타내기 위해 fixed-point notation을 나타내기 위해 `fp_arithmetic.h` 에 `int32_t`와 `int64_t`를 각각 `fp_t`와 `fp_lt`로 정의했다. 또한, 간단한 정수를 곱하거나 나누는 경우가 아닐 때 코드를 간결하게 구성하기 위해 `FIFTYNINE_SIXTIETH`와 `ONE_SIXTIETH`를 미리 정의하였다.
+각 스레드의 값을 조절하기 위한 `thread_mlfqs_[operation]` 형태의 함수들은 `thread.c`에 작성하였다. `thread_mlfqs_inc_recent_cpu` 및 `therad_mlfqs_update_load_avg` 등 대부분의 함수들에서 현재 스레드가 `idle_thread`인지 아닌지를 판별하는 것이 중요하며, 이는 `idle_thread`는 CPU를 차지하는 스레드가 없을 경우 CPU를 점유하는, scheduler에 독립적인 스레드이기 때문이다.
+
+계산 과정에서 소수 값이 필요할 수 있으며, (최종적으로 계산된 priority는 소수 값을 round하여 `int`로 사용하게 된다), 소수 값을 나타내기 위해 fixed-point notation을 나타내기 위해 `fp_arithmetic.h` 에 `int32_t`와 `int64_t`를 각각 `fp_t`와 `fp_lt`로 정의했다. 또한, 간단한 정수를 곱하거나 나누는 경우가 아닐 때 코드를 간결하게 구성하기 위해 `FIFTYNINE_SIXTIETH`와 `ONE_SIXTIETH`를 미리 정의하였다. (커밋 `a73d443` 참고)
+
+기존에 핀토스를 빌드하기 위한 `Makefile.build`에는 스레드의 기본적인 기능을 구현하기 위한 `.c` 파일만 존재했다. 명시적으로 고정소수점 연산을 include시켜서 빌드하기 위해 해당 파일에 `threads/fp_arithmetic.c`를 추가했다. (커밋 `caa2723` 참고)
+
+기본적인 기능을 구현 후, 빌드를 위해 컴파일을 진행했을 때 `thread_foreach([thread_mlfqs function], NULL)`에서 Compile warning이 발생하였다. `[thread_mlfqs function]`은 인자로 `struct thread*` 타입의 인자를 1개만 받지만 `thread_foreach`를 통해 인자를 전달할 땐 `void *aux`를 전달한다. (아무 인자도 받지 않기 때문에 이 값은 `NULL`로 전달했었다.) 두 함수 간 명시적인 type의 conflict가 발생하여 Compile warning이 발생했으며, 이를 해결하기 위해 모든 스레드 (`all_list`) 를 순회하면서 기존의 기능을 동일하게 수행하는 함수인 `threa_mlfqs_set_priority_all`과 `thread_mlfqs_set_recent_cpu_all`을 작성했다. (커밋 `28d628e` 참고)
 
 ## Discussion
 
