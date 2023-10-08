@@ -27,6 +27,24 @@
 
 ### Priority Scheduler
 
+#### Basic Implementation
+
+우선순위에 맞게 스레드가 실행되기 위해서는 핀토스의 `schedule` 함수에서 `ready_list`로부터 원소를 pop할 때, 가장 먼저 pop되는 스레드가 `ready_list`에 있는 스레드 중에서 가장 우선순위가 높아야 한다. 핀토스의 스레드는 `thread_unblock`, `thread_yield`를 통해 ready 상태가 될 때 `ready_list`에 들어가므로, 이들 함수를 수정하여 높은 우선순위 스레드가 먼저 올 수 있도록 `list_insert_ordered`를 사용해 `ready_list`에 추가하도록 하였다. (커밋 `bd1b38c` 참고)
+
+또한, 세마포어와 같은 synchronization primitive의 접근에 대해서도 앞서 `ready_list`를 순서를 맞췄던 것처럼, 우선순위가 높은 스레드가 `waiters` 리스트에서 먼저 오도록 `list_insert_ordered`, `list_sort` 등을 사용하도록 세마포어, lock, condition variable의 구현을 수정하였다. (커밋 `6b3e869`, `bc5dbd8`, `c8797d6` 참고)
+
+#### Preemption
+
+만약 핀토스가 시작해서 종료할 때까지 실행할 스레드가 고정되어 있고, 우선순위가 바뀌지 않는다면 앞서 언급한 `ready_list`에 `list_insert_ordered` 함수를 사용하여 스레드를 삽입하는 알고리즘으로 충분할 것이다. 하지만, 실제 핀토스에서는 새로운 스레드가 생성되거나, 이미 실행되는 중인 스레드의 우선 순위가 변경되는 것이 충분히 가능하다. 현재 실행 중인 스레드보다 우선순위가 높은 스레드가 생성되거나, 현재 실행 중인 스레드의 우선순위가 변경되어 `ready_list`에 현재 스레드보다 우선순위가 높은 스레드가 존재한다면, preemption을 통해 더 높은 우선순위의 스레드가 실행될 수 있어야 한다. Preemption은 스레드가 생성되는 `thread_create`, `thread_set_priority`에서 발생할 수 있기 때문에, 두 함수의 뒤에서 `thread_could_preempt` 함수로 검사한 다음 preempt 가능할 때 `thread_yield`를 실행하도록 하였다. (커밋 `556c0f1`, `1f8cced` 참고)
+
+Synchronization primitive에서도 preemption이 일어나는 것이 가능하다. `sema_up`에서 `thread_unblock`을 실행하여 `ready_list`에 현재 실행 중인 스레드보다 더 우선순위가 높은 스레드가 추가되는 상황이 충분히 가능하다. 따라서 `sema_up`에서 `thread_unblock`을 수행한 뒤, 만약 preemption이 가능한 경우를 검사하였다. `sema_up`의 경우 인터럽트 핸들러에서 호출될 수 있는 함수이기 때문에, 이후 discussion에서 설명할 것처럼 인터럽트 핸들러에서 실행되는 경우를 따로 처리하였다. (커밋 `6b3e869`, `97a3896` 참고)
+
+#### Priority Donation
+
+Design report에서 설명했듯, 핀토스의 lock을 단순히 priority scheduling에 따라 구현하면 priority inversion이 일어날 가능성이 존재한다. 따라서 `lock_acquire`에서 기다리는 중인 스레드는 현재 lock을 소유하고 있는 스레드에 우선 순위를 기부한다. 우선 순위 기부를 위해 `lock_acquire`에서 `lock`의 `holder`에 대해, `priority_donor` 리스트에 현재 스레드를 추가한 다음, `thread_donate_priority` 함수를 실행하여 현재 스레드가 기다리고 있는 lock의 소유자를 거슬러 올라가면서 `priority_donor` 리스트에서 최대 priority를 구해 donation을 수행하도록 구현하였다. (커밋 `556c0f1` 참고)
+
+반면, lock을 해제하는 상황에서는 우선 `thread_lock_clear` 함수를 호출한다. 이 함수에서는 현재 스레드의 `priority_donor`에 있는 스레드 중에서, 해제 중인 lock을 acquire하기 위해 기다리는 스레드를 `priority_donor`에서 제거한다. 이후, `thread_update_priority` 함수를 호출하여 `priority_donor` 리스트에 남아 있는 스레드에서 donation을 계산한다. (커밋 `459011e`, `50c01a8` 참고)
+
 ### Advanced Scheduler
 
 구현한 MLFQS scheduler는 일정 시간마다 실시간으로 priority를 업데이트하는 스케줄러이다. 이를 위해, `timer_interrupt` 함수에 일정 틱마다 우선순위를 결정하는 데 필요한 값들을 설정하도록 구현했다. (기존에 구현된 Priority scheduler에서 사용하던 `thread_set_priority`와 같은 함수는 사용하지 않는다.)
