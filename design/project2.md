@@ -6,6 +6,8 @@
 
 ### Process Termination Messges
 
+`exit` system call이나 비정상적인 system call 호출이나 메모리 참조 등에 의해 프로세스를 종료해야 할 경우, exit code를 설정하고 `thread_exit`을 실행하는 함수룰 구현할 것이다. `process name: exit(status)` 메시지는 이 함수에서 `thread_exit`을 실행하기 전 `printf`를 통해 출력하면 될 것이다.
+
 ### Argument Passing
 
 ### System Call
