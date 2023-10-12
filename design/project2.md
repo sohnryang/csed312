@@ -44,4 +44,8 @@ checked_copy_byte_from_user (const uint8_t *usrc)
 
 #### System Call Implementation
 
+##### Halt
+
+Halt system call의 경우에는 매우 단순하다. `shutdown_power_off`를 호출하면 핀토스가 종료할 것이다.
+
 ### Denying Writes to Executables
