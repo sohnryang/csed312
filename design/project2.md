@@ -36,4 +36,10 @@ checked_copy_byte_from_user (const uint8_t *usrc)
 
 위 코드의 작동 과정은 다음과 같다. 우선 주어진 user space pointer `usrc`가 실제로 user space 영역에 있는 데이터를 가리키는지 `is_valid_user_ptr` 함수로 확인한다. 이어지는 inline assembly에서는 우선 `1` 레이블에 해당되는 주소를 `eax`에 로드하고, 그 다음 `usrc`가 가리키는 주소를 `eax` 레지스터에 로드한다. 만약 `usrc`가 `NULL` 등 정상적인 주소를 가리키지 않는 포인터라면 page fault가 발생하게 된다. page fault handler에서는 우선 context 정보를 통해 page fault가 일어난 위치를 판정하고, 만약 위 코드에서 page fault가 발생한 것이면 `eip`를 `eax`로, `eax`를 -1로 설정하여 위 코드로 다시 돌아간 다음, 메모리 참조가 실패했을 때 -1을 반환하도록 할 수 있다. 이렇게 user space에서 바이트 하나를 복사하는 함수를 일종의 primitive로 사용하여 user space에서 데이터를 복사해 오는 `memcpy`등의 함수를 구현할 수 있을 것이다.
 
+#### Process Control Block
+
+사용자 프로세스는 system call을 통해 파일시스템 접근, 자식 프로세스 관리 등을 수행하게 된다. 이때 프로세스가 연 파일, 자식 프로세스 등의 상태를 기억해 두고 시스템 콜에서 관리할 필요가 있다. 이를 위해서는 process control block 구조체를 만들어 현재 프로세스의 exit code, load 성공 여부 등을 저장해 둘 것이다. Process control block은 스레드 구조체와 lifetime이 다르기 때문에 필드에 직접 저장하는 대신 별도로 할당하여 포인터로 참조한다.
+
+프로세스의 exit code, load 성공 여부를 저장하는 필드는 다른 프로세스와 공유되기 때문에 synchronization이 필요하다. 여기에서는 프로세스 간의 synchronization을 위해 exit code, load 성공 여부의 결과가 결정되었을 때를 다른 프로세스에게 알리기 위해 세마포어를 사용한다.
+
 ### Denying Writes to Executables
