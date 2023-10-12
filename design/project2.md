@@ -48,4 +48,14 @@ checked_copy_byte_from_user (const uint8_t *usrc)
 
 Halt system call의 경우에는 매우 단순하다. `shutdown_power_off`를 호출하면 핀토스가 종료할 것이다.
 
+##### Child Process
+
+`exec` system call이 실행되면 child process의 process control block을 생성하고, 현재 프로세스의 child process 리스트에 새로 생성된 프로세스를 추가한다. 프로세스의 load가 실패했을 경우의 처리도 필요하기 때문에, process control block의 load 성공 여부를 저장하는 세마포어를 사용하여 load가 끝날 때까지 기다린 다음, load 성공 여부에 맞게 child process의 tid를 리턴한다.
+
+`exit` system call이 실행되면 process control block의 exit code를 쓰고, `wait` system call에서 기다리는 중인 parent process에게 종료를 알리기 위해 semaphore를 사용하여 signalling 한 다음, 프로세스가 사용 중인 자원을 처리한 뒤 종료한다.
+
+`wait` system call은 child process의 리스트에서 주어진 pid를 가지는 프로세스를 찾은 다음, 찾은 프로세스의 process control block의 exit code가 정해질 때까지 세마포어를 이용하여 기다린다. Child process가 종료함이 확인되면 자식 프로세스의 process control block을 할당 해제하고, exit code를 반환한다.
+
+중요한 점은 process control block의 할당 해제 시점은 프로세스가 종료할 때가 아니라, 부모 프로세스에서 자식 프로세스에 대해 `wait` system call을 호출할 때라는 것이다. 따라서 process control block의 lifetime은 `thread` 구조체보다 더 길고, 이 때문에 process control block은 `thread` 구조체의 필드로 저장되는 것이 아니라 별도로 할당될 필요가 있다.
+
 ### Denying Writes to Executables
