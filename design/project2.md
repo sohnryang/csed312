@@ -42,4 +42,6 @@ checked_copy_byte_from_user (const uint8_t *usrc)
 
 프로세스의 exit code, load 성공 여부를 저장하는 필드는 다른 프로세스와 공유되기 때문에 synchronization이 필요하다. 여기에서는 프로세스 간의 synchronization을 위해 exit code, load 성공 여부의 결과가 결정되었을 때를 다른 프로세스에게 알리기 위해 세마포어를 사용한다.
 
+#### System Call Implementation
+
 ### Denying Writes to Executables
