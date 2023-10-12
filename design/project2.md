@@ -58,4 +58,26 @@ Halt system call의 경우에는 매우 단순하다. `shutdown_power_off`를 �
 
 중요한 점은 process control block의 할당 해제 시점은 프로세스가 종료할 때가 아니라, 부모 프로세스에서 자식 프로세스에 대해 `wait` system call을 호출할 때라는 것이다. 따라서 process control block의 lifetime은 `thread` 구조체보다 더 길고, 이 때문에 process control block은 `thread` 구조체의 필드로 저장되는 것이 아니라 별도로 할당될 필요가 있다.
 
+##### File System
+
+핀토스의 파일 시스템은 동시성을 염두에 두고 설계된 것이 아니기 때문에, 파일 시스템 관련 코드는 모두 critical section으로 간주하고 lock을 통해 접근을 통제해야 한다.
+
+`create` system call은 파일 시스템에 주어진 경로에 따라 새로운 파일을 생성한다.
+
+`remove` system call은 파일 시스템에서 주어진 경로의 파일을 삭제한다.
+
+`open` system call은 파일 시스템에서 주어진 경로의 파일을 `filesys_open` 함수로 열고, process control block에 열린 파일의 descriptor를 추가한다. 파일을 여는 것이 성공하였다면 열린 파일의 descriptor 번호를 반환하고, 여는 데 실패하였다면 -1을 반환한다.
+
+`filesize` system call은 file descriptor 번호가 주어졌을 때 열린 파일의 파일 크기를 계산하여 반환한다. 만약 standard output, standard input에 해당하는 파일의 크기를 구하려고 하거나, 주어진 file descriptor에 해당되는 열린 파일이 없다면 프로세스를 비정상 종료시킨다.
+
+`read` system call은 file descriptor 번호와 읽은 데이터를 저장할 버퍼, 읽을 데이터의 크기가 주어졌을 때 지정된 길이만큼의 데이터를 버퍼에 읽어들인다. 이때 사용자가 악의적인 버퍼 주소를 전달할 수 있기 때문에, 버퍼를 할당한 다음 고정된 크기만큼 나누어 읽어들이고, 주어진 주소에 데이터를 에러 검사가 추가된 함수를 사용하여 복사하는 방법으로 구현할 것이다. 키보드에서 읽어 들여야 하는 경우에는 `input_getc` 함수를 사용하고, 콘솔 출력이나 비정상적인 file descriptor에서 읽는 것을 시도할 때에는 프로세스를 비정상 종료시킨다.
+
+`write` system call은 file descriptor 번호와 쓸 데이터를 저장할 버퍼, 쓸 데이터의 크기가 주어졌을 때 지정된 길이만큼의 데이터를 쓴다. 앞서 설명한 `read` system call과 고정된 길이의 버퍼를 일단 커널 메모리에 할당한 다음, 커널 버퍼 크기에 맞게 읽어들여 나누어 실제 write를 수행할 것이다. 콘솔에 출력할 때에는 `putbuf` 함수를 사용하고, 콘솔 입력이나 비정상적인 file descriptor에 출력하는 것을 시도할 때는 프로세스를 비정상 종료시킨다.
+
+`seek` system call은 file descriptor 번호와 새로운 위치를 받고, 열린 파일의 read/write가 일어나는 위치를 변경한다. 콘솔 입력, 출력이나 비정상적인 file descriptor 번호를 받았다면 프로세스를 비정상 종료시킨다.
+
+`tell` system call은 주어진 file descriptor 번호에 해당하는 파일에서 read/write가 일어나는 위치를 반환한다. 앞서 설명한 `seek` system call과 마찬가지로 콘솔 입력, 출력이나 비정상적인 file descriptor 번호를 받았다면 프로세스를 비정상 종료시킨다.
+
+`close` system call은 현재 열린 파일의 file descriptor 번호를 받아 파일을 닫는다. 비정상적인 file descriptor 번호를 받았다면 프로세스를 비정상 종료시킨다.
+
 ### Denying Writes to Executables
