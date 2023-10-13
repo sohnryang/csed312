@@ -357,6 +357,136 @@ process_activate (void)
 
 ### Argument Passing
 
+먼저, argument를 parsing할 수 있는 방법이 필요하다. argument 사이는 (여러 개의) 공백으로 분리되며, 다음과 같은 방법으로 구할 수 있다.
+
+#### Program name
+
+실행할 프로그램은 입력받은 문자열에서 가장 첫 번째로 나오는 공백 이전까지의 문자열이다. `strspn` 류의 함수를 통해 공백 문자의 offset을 구하고, 구한 offset 이전까지의 문자열에 `\0` (Centinel)을 삽입하여 프로그램 이름을 구할 수 있다.
+
+다음과 같은 Pseudo-code를 따른다.
+
+```c
+void
+parse_filename(const char* src, char* dst)
+{
+    size_t blank_offset = strspn(src, " ");
+    strlcpy(dst, src, blank_offset + 1);
+    dst[blank_offset + 1] = '\0';
+    return;
+}
+```
+
+#### Arguments
+
+argument의 개수 (이하 `argc`)를 먼저 구해야 하며, 이는 공백 단위 기준으로 문쟈열을 잘라서(`strtok`) 그 개수를 파악하여 구할 수 있다.
+
+다음과 같은 Pseudo-code를 다른다,
+
+```c
+size_t
+count_argc(const char* src)
+{
+	size_t argc = 0;
+    char* temp = NULL;
+    
+    while("[Tokenize result is NOT NULL]")
+    {
+        strtok(src, " ", &temp);	// strtok with storage: last parsed location
+    	argc += "[Tokenize result is NOT NULL]"
+    }
+    return argc;
+}
+```
+
+이 코드는 argument의 값들(이하 `argv`)을 저장할 배열의 크기를 정적으로 결정하기 위하여 필요하다. 이를 통해 `char**` type의 배열을 만들고, 배열의 각 entry에 `char*` 값의 각 argument를 저장하여 `argv` 배열을 완성할 수 있다. 앞서 사용한 `count_argc`의 코드의 구조와 유사하게 만들 수 있으며, 다음과 같은 Pseudo-code를 따른다.
+
+```c
+char**
+parse_argv(const char* src, size_t argc)
+{
+	char** argv = (char**) malloc(sizeof(char*) * argc);
+    
+    for (size_t arg_entry = 0; arg_entry < argc; arg_entry++)
+    {
+        strtok(src, " ", &temp);
+		argv[arg_entry] = "[Tokenized string's pointer]"
+    }
+    return argv;
+}
+```
+
+이와 같은 방식으로 `argc`와 `argv`를 파싱한 이후 다음과 같은 Convention으로 stack을 쌓아 argument를 pass해야 한다.
+
+주어진 Document의 예시 (`/bin/ls -l foo bar`)는 다음과 같다. (`0xC0000000`에서 User stack이 끝난다.)
+
+| addr offset  | what           | type          | data         | size        |
+| ------------ | -------------- | ------------- | ------------ | ----------- |
+| `0xC0000000` | ***End***      | ***of***      | ***User***   | ***Stack*** |
+| `0xBFFFFFFC` | `*argv[3]`     | `char[4]`     | `bar\0`      | 4           |
+| `0xBFFFFFF8` | `*argv[2]`     | `char[4]`     | `foo\0`      | 4           |
+| `0xBFFFFFF5` | `*argv[1]`     | `char[3]`     | `-l\0`       | 3           |
+| `0xBFFFFFED` | `*argv[0]`     | `char[8]`     | `/bin/ls\0`  | 8           |
+| `0xBFFFFFEC` | `word-align`   | `uint8_t`     | `0x00`       | 1           |
+| `0xBFFFFFE8` | `NULL`         | `char*`       | `NULL`       | 4           |
+| `0xBFFFFFE4` | `argv[3]`      | `char*`       | `0xBFFFFFFC` | 4           |
+| `0xBFFFFFE0` | `argv[2]`      | `char*`       | `0xBFFFFFF8` | 4           |
+| `0xBFFFFFDC` | `argv[1]`      | `char*`       | `0xBFFFFFF5` | 4           |
+| `0xBFFFFFD8` | `argv[0]`      | `char*`       | `0xBFFFFFED` | 4           |
+| `0xBFFFFFD4` | `argv`         | `char**`      | `0xBFFFFFD8` | 4           |
+| `0xBFFFFFD0` | `argc`         | `int`         | `4`          | 4           |
+| `0xBFFFFFCC` | `return addr.` | `void (*) ()` | `NULL`       | 4           |
+
+다음과 같은 Pseudo-code로 construct할 수 있다. Stack의 맨 위부터 하나씩 거꾸로 삽입하면서, address를 해당 offset만큼 빼고 값을 저장하는 것의 반복을 통해 구현할 수 있다.
+
+```c
+void
+construct_stack(int argc, char** argv, void** sp)
+{
+    /* Push argv values */
+    for(size_t arg_entry = argc - 1; arg_entry >= 0; arg_entry--)
+    {
+        *sp -= strlen(argv[arg_entry]);
+        strncpy(*sp, argv[arg], strlen(argv[arg_entry]));
+    }
+    
+    /* Set word-align */
+    while ((addr_t) (*sp) % 4)
+    {
+        (*sp)--;
+        **(char**) sp = '\0'
+    }
+    
+    /* Push NULL */
+    *sp -= 4;
+    **(uint32_t**) sp = NULL;
+    
+    /* Push argv addresses */
+    for(size_t arg_entry = argc - 1; arg_entry >= 0; arg_entry--)
+    {
+        *sp -= 4;
+        **(uint32_t**) sp = argv[arg_entry];
+    }
+    
+    /*
+    	After passing the argument, argv never used again
+    	So it should be freed.
+    */
+    free(argv);
+    
+    /* Push the argv address - just above this entry */
+    *sp -= 4;
+    **(uint32_t**) sp = *sp + 4;
+    
+    /* Push argc */
+    *sp -= 4;
+    **(size_t**) sp = argc;
+    
+    /* Push formal return address */
+    *sp -= 4;
+    **(void(*) ()) sp = (void(*) ()) NULL;
+}
+```
+
 
 
 ### System Call
