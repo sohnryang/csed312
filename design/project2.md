@@ -2,13 +2,362 @@
 
 ## Analysis of the current implementation
 
+### `process` functions
+
+`process.c`에 구현되어 있는 process 관련 함수들은 다음과 같은 함수가 정의되어 있다.
+
+#### `load`
+
+```c
+bool
+load (const char *file_name, void (**eip) (void), void **esp)
+{
+  struct thread *t = thread_current ();
+  struct Elf32_Ehdr ehdr;
+  struct file *file = NULL;
+  off_t file_ofs;
+  bool success = false;
+  int i;
+
+  /* Allocate and activate page directory. */
+  t->pagedir = pagedir_create ();
+  if (t->pagedir == NULL)
+    goto done;
+  process_activate ();
+
+  /* Open executable file. */
+  file = filesys_open (file_name);
+  if (file == NULL)
+    {
+      printf ("load: %s: open failed\n", file_name);
+      goto done;
+    }
+
+  /* Read and verify executable header. */
+  if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
+      || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2
+      || ehdr.e_machine != 3 || ehdr.e_version != 1
+      || ehdr.e_phentsize != sizeof (struct Elf32_Phdr) || ehdr.e_phnum > 1024)
+    {
+      printf ("load: %s: error loading executable\n", file_name);
+      goto done;
+    }
+
+  /* Read program headers. */
+  file_ofs = ehdr.e_phoff;
+  for (i = 0; i < ehdr.e_phnum; i++)
+    {
+      struct Elf32_Phdr phdr;
+
+      if (file_ofs < 0 || file_ofs > file_length (file))
+        goto done;
+      file_seek (file, file_ofs);
+
+      if (file_read (file, &phdr, sizeof phdr) != sizeof phdr)
+        goto done;
+      file_ofs += sizeof phdr;
+      switch (phdr.p_type)
+        {
+        case PT_NULL:
+        case PT_NOTE:
+        case PT_PHDR:
+        case PT_STACK:
+        default:
+          /* Ignore this segment. */
+          break;
+        case PT_DYNAMIC:
+        case PT_INTERP:
+        case PT_SHLIB:
+          goto done;
+        case PT_LOAD:
+          if (validate_segment (&phdr, file))
+            {
+              bool writable = (phdr.p_flags & PF_W) != 0;
+              uint32_t file_page = phdr.p_offset & ~PGMASK;
+              uint32_t mem_page = phdr.p_vaddr & ~PGMASK;
+              uint32_t page_offset = phdr.p_vaddr & PGMASK;
+              uint32_t read_bytes, zero_bytes;
+              if (phdr.p_filesz > 0)
+                {
+                  /* Normal segment.
+                     Read initial part from disk and zero the rest. */
+                  read_bytes = page_offset + phdr.p_filesz;
+                  zero_bytes = (ROUND_UP (page_offset + phdr.p_memsz, PGSIZE)
+                                - read_bytes);
+                }
+              else
+                {
+                  /* Entirely zero.
+                     Don't read anything from disk. */
+                  read_bytes = 0;
+                  zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
+                }
+              if (!load_segment (file, file_page, (void *)mem_page, read_bytes,
+                                 zero_bytes, writable))
+                goto done;
+            }
+          else
+            goto done;
+          break;
+        }
+    }
+
+  /* Set up stack. */
+  if (!setup_stack (esp))
+    goto done;
+
+  /* Start address. */
+  *eip = (void (*) (void))ehdr.e_entry;
+
+  success = true;
+
+done:
+  /* We arrive here whether the load is successful or not. */
+  file_close (file);
+  return success;
+}
+```
+
+어쩌고 저쩌고
+
+---
+
+#### `start_process`
+
+```c
+static void
+start_process (void *file_name_)
+{
+  char *file_name = file_name_;
+  struct intr_frame if_;
+  bool success;
+
+  /* Initialize interrupt frame and load executable. */
+  memset (&if_, 0, sizeof if_);
+  if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
+  if_.cs = SEL_UCSEG;
+  if_.eflags = FLAG_IF | FLAG_MBS;
+  success = load (file_name, &if_.eip, &if_.esp);
+
+  /* If load failed, quit. */
+  palloc_free_page (file_name);
+  if (!success)
+    thread_exit ();
+
+  /* Start the user process by simulating a return from an
+     interrupt, implemented by intr_exit (in
+     threads/intr-stubs.S).  Because intr_exit takes all of its
+     arguments on the stack in the form of a `struct intr_frame',
+     we just point the stack pointer (%esp) to our stack frame
+     and jump to it. */
+  asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");
+  NOT_REACHED ();
+}
+```
+
+기존의 `start_process`는 다음과 같이 동작한다.
+
+1. interrupt frame를 다음과 같이 초기화한다.
+
+   * `gs`, `fs`, `es`, `ds`, `ss`: Stack segment와 Data segment, fs, gs 등 TLS를 모두 `SEL_UDSEG`(User Data Segment)로 초기화한다.
+
+   * `cs`: Code segment를 `SEL_UCSEG`(User Code Segment)로 초기화한다.
+
+   * `eflags`: Flag registers를 `FLAG_IF`(Interrupt Flag)를 올린다. (`FLAG_MBS`는 Must Be Setted인 flag이다.)
+
+2. 프로그램을 `load`한다.
+
+   - (파싱되지 않은) 명령어, 현재 Interrupt frame의 instruction pointer와 stack pointer를 세팅한다.
+
+3. `process_execute`에서 할당된 `file_name`을 할당 해제한다.
+
+4. (2)에서 `load`가 실패한 경우 해당 스레드를 빠져나간다.
+
+5. `asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g"(&if_) : "memory");`를 통해 interrupt frame에서 `jmp intr_exit`로 Instruction pointer를 옮긴다.
+
+(5)에서 Context가 변화였기 때문에 그 이후 함수는 instruction pointer가 도달하지 못한다. (`NOT_REACHED()`)
+
+---
+
+#### `process_execute`
+
+```c
+tid_t
+process_execute (const char *file_name)
+{
+  char *fn_copy;
+  tid_t tid;
+
+  /* Make a copy of FILE_NAME.
+     Otherwise there's a race between the caller and load(). */
+  fn_copy = palloc_get_page (0);
+  if (fn_copy == NULL)
+    return TID_ERROR;
+  strlcpy (fn_copy, file_name, PGSIZE);
+
+  /* Create a new thread to execute FILE_NAME. */
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  if (tid == TID_ERROR)
+    palloc_free_page (fn_copy);
+  return tid;
+}
+```
+
+기존의 `process_execute`는 다음과 같이 동작한다.
+
+1. `fn_copy`를 할당받고, 입력받은 명령어를 복사한다.
+2. `fn_copy`를 argument로  하여 `thread_create`를 호출한다. 해당 함수 내에서 `start_process(fn_copy)`를 실행하게 된다.
+3. 성공적으로 스레드를 생성하지 못한 경우 할당받은 `fn_copy`를 할당 해제하고, 스레드의 tid를 반환한다. (에러 시 `TID_ERROR`)
+
+---
+
+#### `process_wait`
+
+```c
+int
+process_wait (tid_t child_tid UNUSED)
+{
+  return -1;
+}
+
+```
+
+현재 구현되지 않았다.
+
+---
+
+#### `process_exit`
+
+```c
+void
+process_exit (void)
+{
+  struct thread *cur = thread_current ();
+  uint32_t *pd;
+
+  /* Destroy the current process's page directory and switch back
+     to the kernel-only page directory. */
+  pd = cur->pagedir;
+  if (pd != NULL)
+    {
+      /* Correct ordering here is crucial.  We must set
+         cur->pagedir to NULL before switching page directories,
+         so that a timer interrupt can't switch back to the
+         process page directory.  We must activate the base page
+         directory before destroying the process's page
+         directory, or our active page directory will be one
+         that's been freed (and cleared). */
+      cur->pagedir = NULL;
+      pagedir_activate (NULL);
+      pagedir_destroy (pd);
+    }
+}
+```
+
+현재 `process_exit`의 구현은 다음과 같다.
+
+1. 현재 스레드의 `pagedir`이 할당되어 있는 경우, `pagedir` ID를 `NULL`로 바꾸어 스레드에서 관리하지 못하도록 한다.
+
+2. `pagedir_activate`는 다음과 같으며,
+
+   ```c
+   void
+   pagedir_activate (uint32_t *pd)
+   {
+     if (pd == NULL)
+       pd = init_page_dir;
+   
+     /* Store the physical address of the page directory into CR3
+        aka PDBR (page directory base register).  This activates our
+        new page tables immediately.  See [IA32-v2a] "MOV--Move
+        to/from Control Registers" and [IA32-v3a] 3.7.5 "Base
+        Address of the Page Directory". */
+     asm volatile ("movl %0, %%cr3" : : "r"(vtop (pd)) : "memory");
+   }
+   ```
+
+   해당 어셈블리는 `CR3` 레지스터(Page directory base register)를 현재 `pagedir`의 주소로 옮기는 어셈블리이다. 첫 번째 인자가 `NULL`로 주어졌기 때문에, `init_page_dir`의 Pagedir으로 해당 레지스터를 옮기게 된다.
+
+3. `pagedir_destroy`는 다음과 같으며,
+
+   ```c
+   void
+   pagedir_destroy (uint32_t *pd)
+   {
+     uint32_t *pde;
+   
+     if (pd == NULL)
+       return;
+   
+     ASSERT (pd != init_page_dir);
+     for (pde = pd; pde < pd + pd_no (PHYS_BASE); pde++)
+       if (*pde & PTE_P)
+         {
+           uint32_t *pt = pde_get_pt (*pde);
+           uint32_t *pte;
+   
+           for (pte = pt; pte < pt + PGSIZE / sizeof *pte; pte++)
+             if (*pte & PTE_P)
+               palloc_free_page (pte_get_page (*pte));
+           palloc_free_page (pt);
+         }
+     palloc_free_page (pd);
+   }
+   ```
+
+   주어진 `pd`를 기준으로 할당받은 `pt`(Page table entry)와  `pd`(Page directory)를 모두 할당 해제한다.
+
+---
+
+#### `process_activate`
+
+```c
+void
+process_activate (void)
+{
+  struct thread *t = thread_current ();
+
+  /* Activate thread's page tables. */
+  pagedir_activate (t->pagedir);
+
+  /* Set thread's kernel stack for use in processing
+     interrupts. */
+  tss_update ();
+}
+```
+
+현재 `process_exit`의 구현은 다음과 같다.
+
+1. `pagedir_activate`를 통해 `CR3` 레지스터를 현재 스레드의 `pagedir`의 위치로 옮긴다.
+
+2. `tss_update`는 다음과 같다.
+
+   ```c
+   void
+   tss_update (void)
+   {
+     ASSERT (tss != NULL);
+     tss->esp0 = (uint8_t *)thread_current () + PGSIZE;
+   }
+   ```
+
+   현재 스레드의 포인터에 `PGSIZE`를 더한다.`thread_create`에서 `t = palloc_get_page (PAL_ZERO)`로 할당된 크기와 동일하며, Task-state segment의 `esp0`을 이 값으로 설정한다.
+
+---
+
+
+
 ## Design plan
+
+
 
 ### Process Termination Messges
 
 `exit` system call이나 비정상적인 system call 호출이나 메모리 참조 등에 의해 프로세스를 종료해야 할 경우, exit code를 설정하고 `thread_exit`을 실행하는 함수룰 구현할 것이다. `process name: exit(status)` 메시지는 이 함수에서 `thread_exit`을 실행하기 전 `printf`를 통해 출력하면 될 것이다.
 
 ### Argument Passing
+
+
 
 ### System Call
 
