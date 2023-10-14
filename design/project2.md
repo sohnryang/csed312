@@ -345,7 +345,73 @@ process_activate (void)
 
 ---
 
+### File system functions and structures
 
+#### `file`
+
+프로그램이 동작하면서 접근할 수 있는 파일 데이터의 형태이며, 해당 구조체는 `filesys/file.c`에 다음과 같이 정의되어 있다.
+
+```c
+/* An open file. */
+struct file
+{
+  struct inode *inode; /* File's inode. */
+  off_t pos;           /* Current position. */
+  bool deny_write;     /* Has file_deny_write() been called? */
+};
+```
+
+파일은 PintOS System 내에서도 (리눅스와 마찬가지로) 고유한 파일의 정보를 기록하기 위해 `inode`를 사용한다. 또한, `file`의 `seek` 및 `tell`등 커서의 위치와 관련이 있는 system call을 위한, 커서를 나타내는 필드인 `off_t pos`가 존재하고, 마지막으로 명시적으로 파일에 기록할 수 있는 여부를 따지는 `deny_write` 필드가 존재한다. 해당 필드의 설명은 [Design Plan - Denying Writes to Executables](#Denying Writes to Executables) 에서 자세히 설명한다.
+
+#### `inode`
+
+`inode`는 OS에서 파일의 Meta,data를 기록하기 위한 구조체이다. 해당 구조체는 `filesys/inode.c`에 다음과 같이 정의되어 있다.
+
+```c
+/* In-memory inode. */
+struct inode
+{
+  struct list_elem elem;  /* Element in inode list. */
+  block_sector_t sector;  /* Sector number of disk location. */
+  int open_cnt;           /* Number of openers. */
+  bool removed;           /* True if deleted, false otherwise. */
+  int deny_write_cnt;     /* 0: writes ok, >0: deny writes. */
+  struct inode_disk data; /* Inode content. */
+};
+```
+
+#### `file_allow_write` & `file_deny_write`
+
+```c
+/* Prevents write operations on FILE's underlying inode
+   until file_allow_write() is called or FILE is closed. */
+void
+file_deny_write (struct file *file)
+{
+  ASSERT (file != NULL);
+  if (!file->deny_write)
+    {
+      file->deny_write = true;
+      inode_deny_write (file->inode);
+    }
+}
+
+/* Re-enables write operations on FILE's underlying inode.
+   (Writes might still be denied by some other file that has the
+   same inode open.) */
+void
+file_allow_write (struct file *file)
+{
+  ASSERT (file != NULL);
+  if (file->deny_write)
+    {
+      file->deny_write = false;
+      inode_allow_write (file->inode);
+    }
+}
+```
+
+파일의 수정을 막고, 해제하는 함수들이다. 해당 `file`과, `file`에 해당하는 `inode` 둘 다 동시에 수정을 거부/허용하는 구조의 함수이다. 이들 함수를 사용하여 실행 중인 프로그램에 작성을 막을 수 있으며, 자세한 내용을 [Design Plan - Denying Writes to Executables](#Denying Writes to Executables) 에서 서술했다.
 
 ## Design plan
 
@@ -562,3 +628,57 @@ Halt system call의 경우에는 매우 단순하다. `shutdown_power_off`를 �
 `close` system call은 현재 열린 파일의 file descriptor 번호를 받아 파일을 닫는다. 비정상적인 file descriptor 번호를 받았다면 프로세스를 비정상 종료시킨다.
 
 ### Denying Writes to Executables
+
+현재 실행되고 있는 프로그램에 작성을 시도한 경우, 만약 이 시도가 성공적으로 수행된다면 프로그램이 의도한 대로 동작하는 것을 보장할 수 없게 된다. 따라서 프로세스 별로 자신이 실행되는 코드 영역에 프로세스 자기 자신 (혹은 다른 프로세스가) 작성을 시도하는 경우 이를 막아야 한다. `struct thread`에 자신이 실행하는 파일을 기록하기 위한 `struct file *file_executing` 필드를 만들어서 이를 관리하고자 한다.
+
+프로세스를 시작하면서 command line을 파싱하고, 얻어낸 파일의 이름을 [`load`](#`load`)에서 `file = filesys_open (file_name);`와 같이 실행하는 것을 확인할 수 있었다. `load`에 해당 파일을 관리하기 위해 `file_executing` 에 기록하고, `file_deny_write`을 호출한다. 이 때 추가된 파일은 프로세스가 끝날 때 까지 작성을 금지해야 한다.
+
+따라서, 프로세스가 종료되는 시점인 [`process_exit`](#`process_exit`) 에서 `file_allow_write`를 호출하고 해당 스레드의 `file_executing`을 `NULL`로 바꾸어 프로세스를 종료한다. 
+
+이 기능을 구현하기 위한 변경사항을 간단히 전체 코드에 적용하면 다음과 같은 변경이 있다.
+
+```c
+struct thread
+{
+    ...
+    struct file *file_executing;
+    ...
+};
+
+bool
+load (const char *file_name, void (**eip) (void), void **esp)
+{
+    bool success = false;
+	...
+  /* Open executable file. */
+  file = filesys_open (file_name);
+  
+  /* Assign file now executing, deny writing on it. */
+  thread_current()->file_executing = file;
+  file_deny_write(file);
+   
+  if (file == NULL)
+    {
+      printf ("load: %s: open failed\n", file_name);
+      goto done;
+    }
+
+done:
+  // file_close (file); 	<- File should be closed in `process_exit` 
+  return success;
+}
+
+void
+process_exit (void)
+{
+  struct thread *cur = thread_current ();
+  ...
+  /* Free the field now executing, allow writing on it. */
+  file_allow_write(cur->file_executing);
+  cur->file_executing = NULL;
+  ...
+  /* No instruction must executed from file_executing
+  	 Since it has discharged prevention writing on it. */
+     
+}
+```
