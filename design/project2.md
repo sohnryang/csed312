@@ -118,7 +118,19 @@ done:
 }
 ```
 
-어쩌고 저쩌고
+해당 함수는 `ELF` 형태의 executable files를 현재 스레드에 불러오고, 프로그램의 entry point에 Instruction pointer을 세팅, initial stack에 Stack pointer를 세팅한다.
+
+다음과 같은 과정으로 동작한다.
+
+1. 현재 스레드에 `pagedir`에 페이지 디렉토리를 생성한다. PintOS의 파일 시스템을 사용하기 위해 필요한 구조체이다.
+2. 실행하고자 하는 파일을 `filesys_open`을 통해 연다.
+3. 파일 헤더를 분석하여 `ELF`의 형태가 맞는지 분석한다.
+4. 분석한 파일 헤더로부터 세그먼트들과 그 정보를 추출하고,  `load_segment`를 통해 불러 온다.
+5.  `load`의 인자로 전달된 `esp`에 스택을 세팅한다.
+6. `load`의 인자로 전달된 `eip`의 값을 프로그램의 entry point로 설정한다.
+7. 파일을 닫고, 최종적으로 `load`에 성공했음을 반환한다. 
+
+
 
 ---
 
