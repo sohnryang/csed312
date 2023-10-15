@@ -418,7 +418,7 @@ struct file
 
 #### `inode`
 
-`inode`는 OS에서 파일의 Meta,data를 기록하기 위한 구조체이다. 해당 구조체는 `filesys/inode.c`에 다음과 같이 정의되어 있다.
+`inode`는 OS에서 파일의 Metadata를 기록하기 위한 구조체이다. 해당 구조체는 `filesys/inode.c`에 다음과 같이 정의되어 있다.
 
 ```c
 /* In-memory inode. */
