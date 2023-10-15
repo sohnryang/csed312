@@ -427,11 +427,9 @@ file_allow_write (struct file *file)
 
 ## Design plan
 
-
-
 ### Process Termination Messges
 
-`exit` system call이나 비정상적인 system call 호출이나 메모리 참조 등에 의해 프로세스를 종료해야 할 경우, exit code를 설정하고 `thread_exit`을 실행하는 함수룰 구현할 것이다. `process name: exit(status)` 메시지는 이 함수에서 `thread_exit`을 실행하기 전 `printf`를 통해 출력하면 될 것이다.
+`exit` system call이나 비정상적인 system call 호출이나 메모리 참조 등에 의해 프로세스를 종료해야 할 경우, exit code를 설정하고 `thread_exit`을 실행하는 함수룰 구현할 것이다. `process name: exit(status)` 메시지는 이 함수에서 `thread_exit`을 실행하기 전 `printf`를 통해 출력하면 될 것이다.
 
 ### Argument Passing
 
@@ -619,7 +617,7 @@ Halt system call의 경우에는 매우 단순하다. `shutdown_power_off`를 �
 
 ##### File System
 
-핀토스의 파일 시스템은 동시성을 염두에 두고 설계된 것이 아니기 때문에, 파일 시스템 관련 코드는 모두 critical section으로 간주하고 lock을 통해 접근을 통제해야 한다.
+핀토스의 파일 시스템은 동시성을 염두에 두고 설계된 것이 아니기 때문에, 파일 시스템 관련 코드는 모두 critical section으로 간주하고 lock을 통해 접근을 통제해야 한다.
 
 `create` system call은 파일 시스템에 주어진 경로에 따라 새로운 파일을 생성한다.
 
@@ -637,7 +635,7 @@ Halt system call의 경우에는 매우 단순하다. `shutdown_power_off`를 �
 
 `tell` system call은 주어진 file descriptor 번호에 해당하는 파일에서 read/write가 일어나는 위치를 반환한다. 앞서 설명한 `seek` system call과 마찬가지로 콘솔 입력, 출력이나 비정상적인 file descriptor 번호를 받았다면 프로세스를 비정상 종료시킨다.
 
-`close` system call은 현재 열린 파일의 file descriptor 번호를 받아 파일을 닫는다. 비정상적인 file descriptor 번호를 받았다면 프로세스를 비정상 종료시킨다.
+`close` system call은 현재 열린 파일의 file descriptor 번호를 받아 파일을 닫는다. 비정상적인 file descriptor 번호를 받았다면 프로세스를 비정상 종료시킨다.
 
 ### Denying Writes to Executables
 
