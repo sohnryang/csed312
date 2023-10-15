@@ -357,6 +357,47 @@ process_activate (void)
 
 ---
 
+### System Call Procedure
+
+System call은 사용자 프로세스가 OS와 상호작용하여 프로세스 생성, 파일 시스템 접근 등 OS의 개입이 필요한 작업을 처리하게 해 준다. 이번 project 2에서는 핀토스에 system call을 구현한다.
+
+#### `syscall_init`
+
+```c
+void
+syscall_init (void)
+{
+  intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
+}
+```
+
+핀토스에서 system call은 스택에 system call 번호와 인자들을 넣은 다음, `int 0x30` 명령어를 실행하여 이루어진다. 즉, system call도 일종의 인터럽트이기 때문에 인터럽트 핸들러를 등록할 필요가 있고, 이를 `syscall_init` 함수가 수행한다. `intr_register_int` 함수를 통해 `0x30`번 인터럽트에 `syscall_handler` 함수를 핸들러로 등록하는 모습을 볼 수 있다.
+
+`syscall_init` 함수는 `threads/init.c`의 `main` 함수에서 실행된다.
+
+---
+
+#### `syscall_handler`
+
+```c
+static void
+syscall_handler (struct intr_frame *f UNUSED)
+{
+  printf ("system call!\n");
+  thread_exit ();
+}
+```
+
+`syscall_init` 함수에서 등록하는 `0x30` 인터럽트의 핸들러이다. 현재 구현에서는 `system call!` 이라는 문구를 출력하고 스레드를 종료시키는 것 외에는 아무것도 하지 않지만, project 2를 하면서 여기에 system call 구현을 추가해야 할 것이다.
+
+---
+
+#### Library Functions
+
+핀토스에서 구동할 프로그램을 개발하는 사용자 입장에서, system call은 일반적인 함수 호출과는 메커니즘이 다르기 때문에 system call을 호출할 때마다 명시적으로 스택에 값을 넣고 `int 0x30` 명령어를 수행하도록 어셈블리어 코드를 작성하는 것은 불편할 것이다. 핀토스의 `lib/user/syscall.c`에는 system call을 함수 형태로 실행할 수 있도록 wrapper들이 구현되어 있다. 이들 함수는 모두 스택에 인자 값과 해당되는 system call 번호를 push하고 `int 0x30` 명령어를 수행한다.
+
+---
+
 ### File system functions and structures
 
 #### `file`
