@@ -371,7 +371,7 @@ syscall_init (void)
 }
 ```
 
-핀토스에서 system call은 스택에 system call 번호와 인자들을 넣은 다음, `int 0x30` 명령어를 실행하여 이루어진다. 즉, system call도 일종의 인터럽트이기 때문에 인터럽트 핸들러를 등록할 필요가 있고, 이를 `syscall_init` 함수가 수행한다. `intr_register_int` 함수를 통해 `0x30`번 인터럽트에 `syscall_handler` 함수를 핸들러로 등록하는 모습을 볼 수 있다.
+핀토스에서 system call은 스택에 system call 번호와 인자들을 넣은 다음, `int 0x30` 명령어를 실행하여 이루어진다. 즉, system call도 일종의 인터럽트이기 때문에 인터럽트 핸들러를 등록할 필요가 있고, 이를 `syscall_init` 함수가 수행한다. `intr_register_int` 함수를 통해 `0x30`번 인터럽트에 `syscall_handler` 함수를 핸들러로 등록하는 모습을 볼 수 있다. System call은 internal interrupt에 해당하기 때문에, project 1의 timer interrupt와는 달리 `intr_register_int` 함수를 사용하였다.
 
 `syscall_init` 함수는 `threads/init.c`의 `main` 함수에서 실행된다.
 
