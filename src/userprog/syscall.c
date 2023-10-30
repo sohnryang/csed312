@@ -1,6 +1,7 @@
 #include "userprog/syscall.h"
 #include "devices/shutdown.h"
 #include "threads/interrupt.h"
+#include "userprog/process.h"
 #include "userprog/usermem.h"
 
 static void syscall_handler (struct intr_frame *);
@@ -71,7 +72,8 @@ exit (void *esp)
 
   pop_arg (int, status, esp);
 
-  // TODO: implement
+  process_trigger_exit (status);
+  NOT_REACHED ();
 }
 
 /* Run child process. */
