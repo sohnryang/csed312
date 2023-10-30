@@ -236,6 +236,25 @@ process_activate (void)
   tss_update ();
 }
 
+struct pcb *
+process_child_by_pid (tid_t pid)
+{
+  struct list_elem *el;
+  struct thread *cur;
+  struct pcb *res;
+
+  cur = thread_current ();
+  for (el = list_begin (&cur->children_pcb_list);
+       el != list_end (&cur->children_pcb_list); el = list_next (el))
+    {
+      res = list_entry (el, struct pcb, child_pcb_elem);
+      if (res->pid == pid)
+        return res;
+    }
+
+  return NULL;
+}
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
@@ -414,6 +433,8 @@ load (const char *file_name, void (**eip) (void), void **esp)
 done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
+  t->pcb->load_success = success;
+  sema_up (&t->pcb->load_sema);
   return success;
 }
 

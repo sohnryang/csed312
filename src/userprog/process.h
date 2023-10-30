@@ -9,4 +9,6 @@ void process_trigger_exit (int) NO_RETURN;
 void process_exit (void);
 void process_activate (void);
 
+struct pcb *process_child_by_pid (tid_t);
+
 #endif /* userprog/process.h */
