@@ -3,9 +3,14 @@
 
 #include <debug.h>
 #include <list.h>
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "threads/fp_arithmetic.h"
+
+#ifdef USERPROG
+#include "threads/synch.h"
+#endif
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -32,6 +37,25 @@ typedef int tid_t;
 #define MLFQS_LOAD_AVG_DEFAULT 0   /* Default LOAD_AVG value. */
                                    /* MLFQS scheduler priority update ticks*/
 #define MLFQS_PRIORITY_UPDATE_FREQ 4
+
+#ifdef USERPROG
+/* Struct for process control block. */
+struct pcb
+{
+  tid_t pid; /* PID of process. */
+
+  int exit_code; /* Exit code of process. */
+
+  /* Semaphore for synchronization of `exit_code`. */
+  struct semaphore exit_sema;
+
+  /* Whether the executable loaded successfully. */
+  bool load_success;
+
+  /* Semaphore for synchronization of `load_success` */
+  struct semaphore load_sema;
+};
+#endif
 
 /* A kernel thread or user process.
 
@@ -120,6 +144,9 @@ struct thread
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
   uint32_t *pagedir; /* Page directory. */
+
+  /* Process control block. */
+  struct pcb *pcb;
 #endif
 
   /* Owned by thread.c. */
