@@ -16,6 +16,7 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
@@ -179,6 +180,19 @@ process_wait (tid_t child_tid UNUSED)
   while (true)
     {
     }
+}
+
+/* Exit the process with given exit code. */
+void
+process_trigger_exit (int exit_code)
+{
+  struct thread *cur = thread_current ();
+
+  cur->pcb->exit_code = exit_code;
+  sema_up (&cur->pcb->exit_sema);
+  thread_exit ();
+
+  NOT_REACHED ();
 }
 
 /* Free the current process's resources. */
