@@ -5,6 +5,7 @@
 #include "userprog/gdt.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "userprog/process.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -148,9 +149,7 @@ page_fault (struct intr_frame *f)
 
   /* Handle illegal memory access of user space code. */
   if (user)
-    {
-      // TODO: exit process
-    }
+    process_trigger_exit (-1);
 
   /* Handle page faults caused by user memory access from kernel. */
   else if (fault_addr < PHYS_BASE)
