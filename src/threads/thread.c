@@ -206,6 +206,13 @@ thread_create (const char *name, int priority, thread_func *function, void *aux)
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+#ifdef USERPROG
+  t->pcb = palloc_get_page (PAL_ZERO);
+  t->pcb->pid = tid;
+  sema_init (&t->pcb->exit_sema, 0);
+  sema_init (&t->pcb->load_sema, 0);
+#endif
+
   /* Add to run queue. */
   thread_unblock (t);
 
