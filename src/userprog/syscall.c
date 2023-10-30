@@ -1,6 +1,9 @@
 #include "userprog/syscall.h"
 #include "devices/shutdown.h"
 #include "threads/interrupt.h"
+#include "threads/palloc.h"
+#include "threads/synch.h"
+#include "threads/vaddr.h"
 #include "userprog/process.h"
 #include "userprog/usermem.h"
 
@@ -79,10 +82,35 @@ static int
 exec (void *esp)
 {
   const char *filename;
+  char *filename_copy;
+  int child_pid, filename_len, res;
+  struct pcb *child_pcb;
 
   pop_arg (const char *, filename, esp);
 
-  // TODO: implement
+  filename_len = usermem_strlen (filename);
+  if (filename_len < 0 || filename_len >= PGSIZE)
+    process_trigger_exit (-1);
+
+  filename_copy = palloc_get_page (0);
+  res = usermem_strlcpy_from_user (filename_copy, filename, filename_len + 1);
+  if (res < 0)
+    {
+      palloc_free_page (filename_copy);
+      process_trigger_exit (-1);
+    }
+
+  child_pid = process_execute (filename_copy);
+  palloc_free_page (filename_copy);
+  if (child_pid == -1)
+    return -1;
+
+  child_pcb = process_child_by_pid (child_pid);
+  sema_down (&child_pcb->load_sema);
+  if (!child_pcb->load_success)
+    return -1;
+
+  return child_pid;
 }
 
 /* Wait for child process. */
