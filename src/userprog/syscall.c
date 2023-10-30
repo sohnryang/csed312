@@ -28,7 +28,7 @@ static syscall_func close;
     arg_ptr = (TYPE *)(SP);                                                    \
     dst = usermem_memcpy_from_user (&OUT, arg_ptr, sizeof (TYPE));             \
     if (dst == NULL)                                                           \
-      ; /* TODO: exit process */                                               \
+      process_trigger_exit (-1);                                               \
     arg_ptr++;                                                                 \
     SP = arg_ptr;                                                              \
   })
@@ -50,9 +50,7 @@ syscall_handler (struct intr_frame *f)
   void *esp = f->esp;
   pop_arg (int, syscall_id, esp);
   if (syscall_id < 0 || syscall_id >= 13)
-    {
-      /* TODO: exit process */
-    }
+    process_trigger_exit (-1);
 
   f->eax = syscall_table[syscall_id](esp);
 }
