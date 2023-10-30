@@ -197,6 +197,7 @@ process_trigger_exit (int exit_code)
 {
   struct thread *cur = thread_current ();
 
+  printf ("%s: exit(%d)\n", cur->name, exit_code);
   cur->pcb->exit_code = exit_code;
   sema_up (&cur->pcb->exit_sema);
   thread_exit ();
