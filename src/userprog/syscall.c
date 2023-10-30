@@ -93,7 +93,7 @@ wait (void *esp)
 
   pop_arg (int, pid, esp);
 
-  // TODO: implement
+  return process_wait (pid);
 }
 
 /* Create file. */
