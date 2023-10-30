@@ -179,6 +179,9 @@ thread_create (const char *name, int priority, thread_func *function, void *aux)
   struct switch_entry_frame *ef;
   struct switch_threads_frame *sf;
   tid_t tid;
+#ifdef USERPROG
+  struct thread *cur;
+#endif
 
   ASSERT (function != NULL);
 
@@ -211,6 +214,9 @@ thread_create (const char *name, int priority, thread_func *function, void *aux)
   t->pcb->pid = tid;
   sema_init (&t->pcb->exit_sema, 0);
   sema_init (&t->pcb->load_sema, 0);
+
+  cur = thread_current ();
+  list_push_back (&cur->children_pcb_list, &t->pcb->child_pcb_elem);
 #endif
 
   /* Add to run queue. */
@@ -637,6 +643,9 @@ static void
 init_thread (struct thread *t, const char *name, int priority)
 {
   enum intr_level old_level;
+#ifdef USERPROG
+  struct thread *cur;
+#endif
 
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
@@ -659,6 +668,16 @@ init_thread (struct thread *t, const char *name, int priority)
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
+
+#ifdef USERPROG
+  if (t != initial_thread)
+    cur = thread_current ();
+  else
+    cur = NULL;
+
+  t->parent = cur;
+  list_init (&t->children_pcb_list);
+#endif
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and

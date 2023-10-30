@@ -54,6 +54,9 @@ struct pcb
 
   /* Semaphore for synchronization of `load_success` */
   struct semaphore load_sema;
+
+  /* List element of `children_pcb_list`. */
+  struct list_elem child_pcb_elem;
 };
 #endif
 
@@ -147,6 +150,12 @@ struct thread
 
   /* Process control block. */
   struct pcb *pcb;
+
+  /* List of child processes' PCB. */
+  struct list children_pcb_list;
+
+  /* Pointer to parent thread. */
+  struct thread *parent;
 #endif
 
   /* Owned by thread.c. */
