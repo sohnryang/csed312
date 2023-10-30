@@ -143,7 +143,7 @@ usermem_strlcpy_from_user (char *dst, const char *usrc, size_t n)
       res = usermem_memcpy_from_user (dst, usrc, dst_len);
 
       if (res == NULL)
-        return 0;
+        return -1;
       dst[dst_len] = '\0';
     }
 
