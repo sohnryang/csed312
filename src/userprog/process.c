@@ -187,6 +187,7 @@ process_wait (tid_t child_tid)
   sema_down (&child_pcb->exit_sema);
   exit_code = child_pcb->exit_code;
 
+  list_remove (&child_pcb->child_pcb_elem);
   palloc_free_page (child_pcb);
   return exit_code;
 }
