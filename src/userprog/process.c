@@ -2,6 +2,7 @@
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +21,8 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static int parse_args (char *cmdline, char **argv);
+static void push_args (int argc, char **argv, void **esp);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -28,7 +31,8 @@ static bool load (const char *cmdline, void (**eip) (void), void **esp);
 tid_t
 process_execute (const char *file_name)
 {
-  char *fn_copy;
+  char *fn_copy, prog_name[16];
+  int i;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -39,10 +43,83 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  for (i = 0; file_name[i] != ' ' && file_name[i] != '\0' && i < 15; i++)
+    prog_name[i] = file_name[i];
+  prog_name[i] = '\0';
+  tid = thread_create (prog_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy);
   return tid;
+}
+
+/* Parse command line arguments from `cmdline` and save the args to `argv`.
+   Returns the number of arguments. */
+static int
+parse_args (char *cmdline, char **argv)
+{
+  int argc;
+  char *token, *last;
+
+  argc = 0;
+  for (token = strtok_r (cmdline, " ", &last); token;
+       token = strtok_r (NULL, " ", &last))
+    {
+      argv[argc] = token;
+      argc++;
+    }
+  return argc;
+}
+
+/* Push `argc` arguments in `argv` to process stack starting from `sp`. */
+static void
+push_args (int argc, char **argv, void **esp)
+{
+  int i, arg_len, *argc_ptr;
+  char *arg_ptr, **arg_addrs, **arg_addr_ptr, **argv_addr_ptr;
+  void (**retaddr_ptr) (void);
+  ptrdiff_t padding_size;
+
+  arg_ptr = *esp;
+  arg_addrs = palloc_get_page (0);
+  for (i = argc - 1; i >= 0; i--)
+    {
+      arg_len = strlen (argv[i]);
+      arg_ptr -= arg_len + 1;
+      strlcpy (arg_ptr, argv[i], arg_len + 1);
+      arg_addrs[i] = arg_ptr;
+    }
+  *esp = arg_ptr;
+
+  padding_size = (uintptr_t)(*esp) % sizeof (char *);
+  *esp = (void *)((uintptr_t)(*esp) - padding_size);
+  arg_addr_ptr = *esp;
+  arg_addr_ptr--;
+  *arg_addr_ptr = NULL;
+  for (i = argc - 1; i >= 0; i--)
+    {
+      arg_addr_ptr--;
+      *arg_addr_ptr = arg_addrs[i];
+    }
+  *esp = arg_addr_ptr;
+
+  argv_addr_ptr = *esp;
+  argv_addr_ptr--;
+
+  /* I know this looks like code smell, but this is OK... */
+  *argv_addr_ptr = (void *)arg_addr_ptr;
+  *esp = argv_addr_ptr;
+
+  argc_ptr = *esp;
+  argc_ptr--;
+  *argc_ptr = argc;
+  *esp = argc_ptr;
+
+  retaddr_ptr = *esp;
+  retaddr_ptr--;
+  *retaddr_ptr = NULL;
+  *esp = retaddr_ptr;
+
+  palloc_free_page (arg_addrs);
 }
 
 /* A thread function that loads a user process and starts it
@@ -50,21 +127,32 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
-  char *file_name = file_name_;
+  char *file_name = file_name_, **argv;
   struct intr_frame if_;
   bool success;
+  int argc;
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+
+  argv = palloc_get_page (0);
+  argc = parse_args (file_name, argv);
+  success = load (argv[0], &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
   if (!success)
-    thread_exit ();
+    {
+      palloc_free_page (file_name);
+      palloc_free_page (argv);
+      thread_exit ();
+    }
+
+  push_args (argc, argv, &if_.esp);
+  palloc_free_page (file_name);
+  palloc_free_page (argv);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -88,7 +176,9 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED)
 {
-  return -1;
+  while (true)
+    {
+    }
 }
 
 /* Free the current process's resources. */
