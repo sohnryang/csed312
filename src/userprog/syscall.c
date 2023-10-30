@@ -58,9 +58,10 @@ syscall_handler (struct intr_frame *f)
 
 /* Halt the system. */
 static int
-halt (void *esp)
+halt (void *esp UNUSED)
 {
-  // TODO: implement
+  shutdown_power_off ();
+  NOT_REACHED ();
 }
 
 static int
