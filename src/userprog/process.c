@@ -175,11 +175,20 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED)
+process_wait (tid_t child_tid)
 {
-  while (true)
-    {
-    }
+  struct pcb *child_pcb;
+  int exit_code;
+
+  child_pcb = process_child_by_pid (child_tid);
+  if (child_pcb == NULL)
+    return -1;
+
+  sema_down (&child_pcb->exit_sema);
+  exit_code = child_pcb->exit_code;
+
+  palloc_free_page (child_pcb);
+  return exit_code;
 }
 
 /* Exit the process with given exit code. */
