@@ -192,9 +192,12 @@ open (void *esp)
 
   pop_arg (const char *, filename, esp);
 
+  if (usermem_strlen (filename) < 0)
+    process_trigger_exit (-1);
+
   filename_copy = usermem_strdup_from_user (filename);
   if (filename_copy == NULL)
-    process_trigger_exit (-1);
+    return -1;
 
   thread_fs_lock_acquire ();
   file = filesys_open (filename_copy);
@@ -204,6 +207,9 @@ open (void *esp)
     return -1;
 
   fd = palloc_get_page (PAL_ZERO);
+  if (fd == NULL)
+    return -1;
+
   fd->id = process_get_first_free_fd_num ();
   fd->file = file;
   list_insert_ordered (&thread_current ()->pcb->file_descriptor_list, &fd->elem,
@@ -266,6 +272,9 @@ read (void *esp)
   else
     {
       read_buffer = palloc_get_page (0);
+      if (read_buffer == NULL)
+        return 0;
+
       while (actually_read < length)
         {
           bytes_left = length - actually_read;
@@ -314,6 +323,9 @@ write (void *esp)
 
   actually_written = 0;
   write_buffer = palloc_get_page (0);
+  if (write_buffer == NULL)
+    return 0;
+
   while (actually_written < length)
     {
       bytes_left = length - actually_written;

@@ -141,6 +141,12 @@ start_process (void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
 
   argv = palloc_get_page (0);
+  if (argv == NULL)
+    {
+      palloc_free_page (file_name);
+      thread_exit ();
+    }
+
   argc = parse_args (file_name, argv);
   success = load (argv[0], &if_.eip, &if_.esp);
 
@@ -158,9 +164,19 @@ start_process (void *file_name_)
 
   cur = thread_current ();
   stdin_fd = palloc_get_page (PAL_ZERO);
+  if (stdin_fd == NULL)
+    thread_exit ();
+
   stdin_fd->id = 0;
   stdin_fd->keyboard_in = true;
+
   stdout_fd = palloc_get_page (PAL_ZERO);
+  if (stdout_fd == NULL)
+    {
+      palloc_free_page (stdin_fd);
+      thread_exit ();
+    }
+
   stdout_fd->id = 1;
   stdout_fd->screen_out = true;
   list_push_back (&cur->pcb->file_descriptor_list, &stdin_fd->elem);
