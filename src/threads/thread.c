@@ -223,6 +223,7 @@ thread_create (const char *name, int priority, thread_func *function, void *aux)
   t->pcb->pid = tid;
   sema_init (&t->pcb->exit_sema, 0);
   sema_init (&t->pcb->load_sema, 0);
+  list_init (&t->pcb->file_descriptor_list);
 
   cur = thread_current ();
   list_push_back (&cur->children_pcb_list, &t->pcb->child_pcb_elem);

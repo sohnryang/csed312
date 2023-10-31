@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "list.h"
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
@@ -132,6 +133,8 @@ start_process (void *file_name_)
   struct intr_frame if_;
   bool success;
   int argc;
+  struct thread *cur;
+  struct file_descriptor *stdin_fd, *stdout_fd;
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -154,6 +157,16 @@ start_process (void *file_name_)
   push_args (argc, argv, &if_.esp);
   palloc_free_page (file_name);
   palloc_free_page (argv);
+
+  cur = thread_current ();
+  stdin_fd = palloc_get_page (PAL_ZERO);
+  stdin_fd->id = 0;
+  stdin_fd->keyboard_in = true;
+  stdout_fd = palloc_get_page (PAL_ZERO);
+  stdout_fd->id = 1;
+  stdout_fd->screen_out = true;
+  list_push_back (&cur->pcb->file_descriptor_list, &stdin_fd->elem);
+  list_push_back (&cur->pcb->file_descriptor_list, &stdout_fd->elem);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
