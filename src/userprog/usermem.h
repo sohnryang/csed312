@@ -13,5 +13,6 @@ void *usermem_memcpy_to_user (void *, const void *, size_t);
 
 int usermem_strlen (const char *);
 int usermem_strlcpy_from_user (char *, const char *, size_t);
+char *usermem_strdup_from_user (const char *);
 
 #endif

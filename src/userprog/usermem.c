@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "stddef.h"
+#include "threads/palloc.h"
 #include "threads/vaddr.h"
 
 /* Check if `uptr` is a valid pointer pointing to user space memory. */
@@ -148,4 +149,29 @@ usermem_strlcpy_from_user (char *dst, const char *usrc, size_t n)
     }
 
   return src_len;
+}
+
+/* Duplicate NULL terminated string `ustr`. Returns NULL on failure. */
+char *
+usermem_strdup_from_user (const char *ustr)
+{
+  char *copied;
+  int len, res;
+
+  len = usermem_strlen (ustr);
+  if (len < 0 || len >= PGSIZE)
+    return NULL;
+
+  copied = palloc_get_page (0);
+  if (copied == NULL)
+    return NULL;
+
+  res = usermem_strlcpy_from_user (copied, ustr, len + 1);
+  if (res < 0)
+    {
+      palloc_free_page (copied);
+      return NULL;
+    }
+
+  return copied;
 }
