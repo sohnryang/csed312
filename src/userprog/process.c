@@ -224,6 +224,7 @@ process_trigger_exit (int exit_code)
 
   cur->pcb->exit_code = exit_code;
   sema_up (&cur->pcb->exit_sema);
+  file_close (cur->pcb->exe_file);
   thread_exit ();
 
   NOT_REACHED ();
@@ -457,6 +458,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
       printf ("load: %s: open failed\n", file_name);
       goto done;
     }
+  t->pcb->exe_file = file;
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -535,10 +537,12 @@ load (const char *file_name, void (**eip) (void), void **esp)
   *eip = (void (*) (void))ehdr.e_entry;
 
   success = true;
+  file_deny_write (file);
 
 done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  if (!success)
+    file_close (file);
   thread_fs_lock_release ();
   t->pcb->load_success = success;
   sema_up (&t->pcb->load_sema);
