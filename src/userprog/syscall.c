@@ -155,10 +155,21 @@ static int
 remove (void *esp)
 {
   const char *filename;
+  char *filename_copy;
+  bool success;
 
   pop_arg (const char *, filename, esp);
 
-  // TODO: implement
+  filename_copy = usermem_strdup_from_user (filename);
+  if (filename_copy == NULL)
+    process_trigger_exit (-1);
+
+  thread_fs_lock_acquire ();
+  success = filesys_remove (filename_copy);
+  thread_fs_lock_release ();
+
+  palloc_free_page (filename_copy);
+  return success;
 }
 
 /* Open file. */
