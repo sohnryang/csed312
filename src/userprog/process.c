@@ -296,6 +296,29 @@ process_child_by_pid (tid_t pid)
   return NULL;
 }
 
+/* Get first free fd number in fd list. */
+int
+process_get_first_free_fd_num (void)
+{
+  struct list_elem *el;
+  struct thread *cur;
+  struct file_descriptor *fd;
+  int free_fd_id;
+
+  cur = thread_current ();
+  free_fd_id = 0;
+  for (el = list_begin (&cur->pcb->file_descriptor_list);
+       el != list_end (&cur->pcb->file_descriptor_list); el = list_next (el))
+    {
+      fd = list_entry (el, struct file_descriptor, elem);
+      if (free_fd_id != fd->id)
+        return free_fd_id;
+      free_fd_id++;
+    }
+
+  return free_fd_id;
+}
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 

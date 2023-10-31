@@ -10,5 +10,6 @@ void process_exit (void);
 void process_activate (void);
 
 struct pcb *process_child_by_pid (tid_t);
+int process_get_first_free_fd_num (void);
 
 #endif /* userprog/process.h */
