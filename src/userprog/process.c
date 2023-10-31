@@ -276,6 +276,7 @@ process_activate (void)
   tss_update ();
 }
 
+/* Get child process's PCB from pid. */
 struct pcb *
 process_child_by_pid (tid_t pid)
 {
