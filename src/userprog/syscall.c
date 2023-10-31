@@ -1,8 +1,10 @@
 #include "userprog/syscall.h"
 
 #include <string.h>
+#include "bitmap.h"
 #include "devices/shutdown.h"
 #include "filesys/filesys.h"
+#include "list.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/synch.h"
@@ -177,10 +179,29 @@ static int
 open (void *esp)
 {
   const char *filename;
+  char *filename_copy;
+  struct file_descriptor *fd;
+  struct file *file;
 
   pop_arg (const char *, filename, esp);
 
-  // TODO: implement
+  filename_copy = usermem_strdup_from_user (filename);
+  if (filename_copy == NULL)
+    process_trigger_exit (-1);
+
+  thread_fs_lock_acquire ();
+  file = filesys_open (filename_copy);
+  thread_fs_lock_release ();
+  palloc_free_page (filename_copy);
+  if (file == NULL)
+    return -1;
+
+  fd = palloc_get_page (PAL_ZERO);
+  fd->id = process_get_first_free_fd_num ();
+  fd->file = file;
+  list_push_back (&thread_current ()->pcb->file_descriptor_list, &fd->elem);
+
+  return fd->id;
 }
 
 /* Get size of file. */
