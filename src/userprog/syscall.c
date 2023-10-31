@@ -199,7 +199,8 @@ open (void *esp)
   fd = palloc_get_page (PAL_ZERO);
   fd->id = process_get_first_free_fd_num ();
   fd->file = file;
-  list_push_back (&thread_current ()->pcb->file_descriptor_list, &fd->elem);
+  list_insert_ordered (&thread_current ()->pcb->file_descriptor_list, &fd->elem,
+                       process_compare_fd_id, NULL);
 
   return fd->id;
 }
