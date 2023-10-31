@@ -319,6 +319,26 @@ process_get_first_free_fd_num (void)
   return free_fd_id;
 }
 
+/* Get file descriptor object from id. */
+struct file_descriptor *
+process_get_fd (int id)
+{
+  struct list_elem *el;
+  struct thread *cur;
+  struct file_descriptor *fd;
+
+  cur = thread_current ();
+  for (el = list_begin (&cur->pcb->file_descriptor_list);
+       el != list_end (&cur->pcb->file_descriptor_list); el = list_next (el))
+    {
+      fd = list_entry (el, struct file_descriptor, elem);
+      if (fd->id == id)
+        return fd;
+    }
+
+  return NULL;
+}
+
 bool
 process_compare_fd_id (const struct list_elem *a, const struct list_elem *b,
                        void *aux UNUSED)
