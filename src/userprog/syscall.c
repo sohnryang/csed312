@@ -329,7 +329,10 @@ write (void *esp)
         }
 
       if (fd_object->screen_out)
-        putbuf (write_buffer, bytes_to_write);
+        {
+          putbuf (write_buffer, bytes_to_write);
+          actually_written += bytes_to_write;
+        }
       else
         {
           thread_fs_lock_acquire ();
@@ -339,9 +342,9 @@ write (void *esp)
 
           if (written_bytes == 0)
             break;
-        }
 
-      actually_written += written_bytes;
+          actually_written += written_bytes;
+        }
     }
   palloc_free_page (write_buffer);
 
