@@ -349,6 +349,23 @@ process_compare_fd_id (const struct list_elem *a, const struct list_elem *b,
   return fd_a->id < fd_b->id;
 }
 
+/* Clean up file descriptor. */
+void
+process_cleanup_fd (struct file_descriptor *fd)
+{
+  ASSERT (fd != NULL);
+
+  if (fd->file != NULL)
+    {
+      thread_fs_lock_acquire ();
+      file_close (fd->file);
+      thread_fs_lock_release ();
+    }
+
+  list_remove (&fd->elem);
+  palloc_free_page (fd);
+}
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
