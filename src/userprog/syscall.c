@@ -83,22 +83,14 @@ exec (void *esp)
 {
   const char *filename;
   char *filename_copy;
-  int child_pid, filename_len, res;
+  int child_pid;
   struct pcb *child_pcb;
 
   pop_arg (const char *, filename, esp);
 
-  filename_len = usermem_strlen (filename);
-  if (filename_len < 0 || filename_len >= PGSIZE)
+  filename_copy = usermem_strdup_from_user (filename);
+  if (filename_copy == NULL)
     process_trigger_exit (-1);
-
-  filename_copy = palloc_get_page (0);
-  res = usermem_strlcpy_from_user (filename_copy, filename, filename_len + 1);
-  if (res < 0)
-    {
-      palloc_free_page (filename_copy);
-      process_trigger_exit (-1);
-    }
 
   child_pid = process_execute (filename_copy);
   palloc_free_page (filename_copy);
