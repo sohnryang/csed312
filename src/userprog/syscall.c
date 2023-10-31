@@ -22,7 +22,7 @@ static void syscall_handler (struct intr_frame *);
 
 typedef int syscall_func (void *esp);
 static syscall_func halt NO_RETURN;
-static syscall_func exit NO_RETURN;
+static syscall_func exit_ NO_RETURN;
 static syscall_func exec;
 static syscall_func wait;
 static syscall_func create;
@@ -60,8 +60,8 @@ syscall_handler (struct intr_frame *f)
 {
   int syscall_id;
   syscall_func *syscall_table[]
-      = { halt,     exit, exec,  wait, create, remove, open,
-          filesize, read, write, seek, tell,   close };
+      = { halt,     exit_, exec,  wait, create, remove, open,
+          filesize, read,  write, seek, tell,   close };
 
   void *esp = f->esp;
   pop_arg (int, syscall_id, esp);
@@ -80,7 +80,7 @@ halt (void *esp UNUSED)
 }
 
 static int
-exit (void *esp)
+exit_ (void *esp)
 {
   int status;
 
