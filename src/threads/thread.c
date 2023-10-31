@@ -42,6 +42,11 @@ static struct thread *initial_thread;
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
 
+#ifdef USERPROG
+/* Lock used to guard access to file system. */
+static struct lock fs_lock;
+#endif
+
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame
 {
@@ -101,6 +106,10 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&sleeping_list);
   list_init (&all_list);
+
+#ifdef USERPROG
+  lock_init (&fs_lock);
+#endif
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -917,4 +926,18 @@ thread_compare_priority_donor_priority (const struct list_elem *elem_l,
   ASSERT (is_thread (thrd_r));
 
   return thrd_l->priority > thrd_r->priority;
+}
+
+/* Acquire filesystem lock. */
+void
+thread_fs_lock_acquire (void)
+{
+  lock_acquire (&fs_lock);
+}
+
+/* Release filesystem lock. */
+void
+thread_fs_lock_release (void)
+{
+  lock_release (&fs_lock);
 }
