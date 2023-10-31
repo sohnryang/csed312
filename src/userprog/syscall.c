@@ -378,10 +378,20 @@ static int
 tell (void *esp)
 {
   int fd;
+  struct file_descriptor *fd_object;
+  unsigned res;
 
   pop_arg (int, fd, esp);
 
-  // TODO: implement
+  fd_object = process_get_fd (fd);
+  if (fd_object == NULL || fd_object->file == NULL)
+    process_trigger_exit (-1);
+
+  thread_fs_lock_acquire ();
+  res = file_tell (fd_object->file);
+  thread_fs_lock_release ();
+
+  return res;
 }
 
 /* Close file. */
