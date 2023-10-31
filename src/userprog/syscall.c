@@ -9,6 +9,7 @@
 #include "filesys/filesys.h"
 #include "filesys/off_t.h"
 #include "list.h"
+#include "stdio.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/synch.h"
@@ -298,14 +299,53 @@ static int
 write (void *esp)
 {
   int fd;
-  void *buffer;
-  unsigned length;
+  void *buffer, *dst;
+  unsigned length, actually_written, written_bytes, bytes_to_write, bytes_left;
+  struct file_descriptor *fd_object;
+  char *write_buffer;
 
   pop_arg (int, fd, esp);
   pop_arg (void *, buffer, esp);
   pop_arg (unsigned, length, esp);
 
-  // TODO: implement
+  fd_object = process_get_fd (fd);
+  if (fd_object == NULL || fd_object->keyboard_in)
+    process_trigger_exit (-1);
+
+  actually_written = 0;
+  write_buffer = palloc_get_page (0);
+  while (actually_written < length)
+    {
+      bytes_left = length - actually_written;
+      bytes_to_write
+          = bytes_left > FILE_IO_BUFSIZE ? FILE_IO_BUFSIZE : bytes_left;
+
+      dst = usermem_memcpy_from_user (write_buffer, buffer + actually_written,
+                                      bytes_to_write);
+      if (dst == NULL)
+        {
+          palloc_free_page (write_buffer);
+          process_trigger_exit (-1);
+        }
+
+      if (fd_object->screen_out)
+        putbuf (write_buffer, bytes_to_write);
+      else
+        {
+          thread_fs_lock_acquire ();
+          written_bytes
+              = file_write (fd_object->file, write_buffer, bytes_to_write);
+          thread_fs_lock_release ();
+
+          if (written_bytes == 0)
+            break;
+        }
+
+      actually_written += written_bytes;
+    }
+  palloc_free_page (write_buffer);
+
+  return actually_written;
 }
 
 /* Move to specific position of file. */
