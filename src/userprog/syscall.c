@@ -1,8 +1,12 @@
 #include "userprog/syscall.h"
+
+#include <string.h>
 #include "devices/shutdown.h"
+#include "filesys/filesys.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/synch.h"
+#include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/process.h"
 #include "userprog/usermem.h"
@@ -121,12 +125,29 @@ static int
 create (void *esp)
 {
   const char *filename;
+  char *filename_copy;
   unsigned initial_size;
+  bool success;
 
   pop_arg (const char *, filename, esp);
   pop_arg (unsigned, initial_size, esp);
 
-  // TODO: implement
+  filename_copy = usermem_strdup_from_user (filename);
+  if (filename_copy == NULL)
+    process_trigger_exit (-1);
+
+  if (strlen (filename_copy) == 0)
+    {
+      palloc_free_page (filename_copy);
+      return false;
+    }
+
+  thread_fs_lock_acquire ();
+  success = filesys_create (filename_copy, initial_size);
+  thread_fs_lock_release ();
+
+  palloc_free_page (filename_copy);
+  return success;
 }
 
 /* Remove file. */
