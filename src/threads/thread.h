@@ -9,6 +9,7 @@
 #include "threads/fp_arithmetic.h"
 
 #ifdef USERPROG
+#include "filesys/file.h"
 #include "threads/synch.h"
 #endif
 
@@ -39,6 +40,17 @@ typedef int tid_t;
 #define MLFQS_PRIORITY_UPDATE_FREQ 4
 
 #ifdef USERPROG
+/* Struct for file descriptor. */
+struct file_descriptor
+{
+  int id;                /* Identifier of file descriptor. */
+  struct file *file;     /* Pointer to file. */
+  struct list_elem elem; /* List element for `file_descriptor_list`. */
+
+  bool screen_out;  /* Does this file descriptor print to screen? */
+  bool keyboard_in; /* Does this file descriptor read from keyboard? */
+};
+
 /* Struct for process control block. */
 struct pcb
 {
@@ -57,6 +69,9 @@ struct pcb
 
   /* List element of `children_pcb_list`. */
   struct list_elem child_pcb_elem;
+
+  /* List of open file descriptors. */
+  struct list file_descriptor_list;
 };
 #endif
 
