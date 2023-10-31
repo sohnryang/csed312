@@ -72,6 +72,9 @@ struct pcb
 
   /* List of open file descriptors. */
   struct list file_descriptor_list;
+
+  /* Executable file of process. */
+  struct file *exe_file;
 };
 #endif
 
