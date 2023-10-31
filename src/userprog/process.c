@@ -210,8 +210,24 @@ void
 process_trigger_exit (int exit_code)
 {
   struct thread *cur = thread_current ();
+  struct list_elem *el;
+  struct file_descriptor *fd;
 
   printf ("%s: exit(%d)\n", cur->name, exit_code);
+
+  while (!list_empty (&cur->pcb->file_descriptor_list))
+    {
+      el = list_pop_front (&cur->pcb->file_descriptor_list);
+      fd = list_entry (el, struct file_descriptor, elem);
+      if (fd->file != NULL)
+        {
+          thread_fs_lock_acquire ();
+          file_close (fd->file);
+          thread_fs_lock_release ();
+        }
+      palloc_free_page (fd);
+    }
+
   cur->pcb->exit_code = exit_code;
   sema_up (&cur->pcb->exit_sema);
   thread_exit ();
