@@ -1,6 +1,7 @@
 #ifndef USERPROG_PROCESS_H
 #define USERPROG_PROCESS_H
 
+#include "list.h"
 #include "threads/thread.h"
 
 tid_t process_execute (const char *file_name);
@@ -11,5 +12,6 @@ void process_activate (void);
 
 struct pcb *process_child_by_pid (tid_t);
 int process_get_first_free_fd_num (void);
+list_less_func process_compare_fd_id;
 
 #endif /* userprog/process.h */

@@ -319,6 +319,16 @@ process_get_first_free_fd_num (void)
   return free_fd_id;
 }
 
+bool
+process_compare_fd_id (const struct list_elem *a, const struct list_elem *b,
+                       void *aux UNUSED)
+{
+  struct file_descriptor *fd_a, *fd_b;
+  fd_a = list_entry (a, struct file_descriptor, elem);
+  fd_b = list_entry (b, struct file_descriptor, elem);
+  return fd_a->id < fd_b->id;
+}
+
 /* We load ELF binaries.  The following definitions are taken
    from the ELF specification, [ELF1], more-or-less verbatim.  */
 
