@@ -235,7 +235,9 @@ bool thread_compare_priority_donor_priority (const struct list_elem *,
                                              const struct list_elem *,
                                              void *aux UNUSED);
 
+#ifdef USERPROG
 void thread_fs_lock_acquire (void);
 void thread_fs_lock_release (void);
+#endif
 
 #endif /* threads/thread.h */
