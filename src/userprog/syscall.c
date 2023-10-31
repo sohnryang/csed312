@@ -1,7 +1,9 @@
 #include "userprog/syscall.h"
 
+#include <stdint.h>
 #include <string.h>
 #include "bitmap.h"
+#include "devices/input.h"
 #include "devices/shutdown.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -31,6 +33,8 @@ static syscall_func write;
 static syscall_func seek;
 static syscall_func tell;
 static syscall_func close;
+
+#define FILE_IO_BUFSIZE 1024
 
 #define pop_arg(TYPE, OUT, SP)                                                 \
   ({                                                                           \
@@ -233,14 +237,60 @@ static int
 read (void *esp)
 {
   int fd;
-  void *buffer;
-  unsigned length;
+  void *buffer, *dst;
+  unsigned length, actually_read, read_bytes, bytes_to_read, bytes_left;
+  struct file_descriptor *fd_object;
+  char *read_buffer, keybaord_char;
+  bool res;
 
   pop_arg (int, fd, esp);
   pop_arg (void *, buffer, esp);
   pop_arg (unsigned, length, esp);
 
-  // TODO: implement
+  fd_object = process_get_fd (fd);
+  if (fd_object == NULL || fd_object->screen_out)
+    process_trigger_exit (-1);
+
+  actually_read = 0;
+  if (fd_object->keyboard_in)
+    while (actually_read < length)
+      {
+        keybaord_char = input_getc ();
+        res = usermem_copy_byte_to_user ((uint8_t *)buffer + actually_read,
+                                         keybaord_char);
+        if (!res)
+          process_trigger_exit (-1);
+        actually_read++;
+      }
+  else
+    {
+      read_buffer = palloc_get_page (0);
+      while (actually_read < length)
+        {
+          bytes_left = length - actually_read;
+          bytes_to_read
+              = bytes_left > FILE_IO_BUFSIZE ? FILE_IO_BUFSIZE : bytes_left;
+
+          thread_fs_lock_acquire ();
+          read_bytes = file_read (fd_object->file, read_buffer, bytes_to_read);
+          thread_fs_lock_release ();
+
+          if (read_bytes == 0)
+            break;
+
+          dst = usermem_memcpy_to_user (buffer + actually_read, read_buffer,
+                                        read_bytes);
+          if (dst == NULL)
+            {
+              palloc_free_page (read_buffer);
+              process_trigger_exit (-1);
+            }
+          actually_read += read_bytes;
+        }
+      palloc_free_page (read_buffer);
+    }
+
+  return actually_read;
 }
 
 /* Write to file descriptor. */
