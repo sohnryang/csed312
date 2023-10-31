@@ -357,11 +357,20 @@ seek (void *esp)
 {
   int fd;
   unsigned position;
+  struct file_descriptor *fd_object;
 
   pop_arg (int, fd, esp);
   pop_arg (unsigned, position, esp);
 
-  // TODO: implement
+  fd_object = process_get_fd (fd);
+  if (fd_object == NULL || fd_object->file == NULL)
+    process_trigger_exit (-1);
+
+  thread_fs_lock_acquire ();
+  file_seek (fd_object->file, position);
+  thread_fs_lock_release ();
+
+  return 0;
 }
 
 /* Get position position of file. */
