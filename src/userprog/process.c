@@ -356,6 +356,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
+  thread_fs_lock_acquire ();
   file = filesys_open (file_name);
   if (file == NULL)
     {
@@ -444,6 +445,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
+  thread_fs_lock_release ();
   t->pcb->load_success = success;
   sema_up (&t->pcb->load_sema);
   return success;
