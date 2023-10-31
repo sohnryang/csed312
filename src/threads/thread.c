@@ -653,9 +653,6 @@ static void
 init_thread (struct thread *t, const char *name, int priority)
 {
   enum intr_level old_level;
-#ifdef USERPROG
-  struct thread *cur;
-#endif
 
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
@@ -680,12 +677,6 @@ init_thread (struct thread *t, const char *name, int priority)
   intr_set_level (old_level);
 
 #ifdef USERPROG
-  if (t != initial_thread)
-    cur = thread_current ();
-  else
-    cur = NULL;
-
-  t->parent = cur;
   list_init (&t->children_pcb_list);
 #endif
 }

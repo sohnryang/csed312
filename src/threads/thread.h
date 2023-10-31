@@ -171,9 +171,6 @@ struct thread
 
   /* List of child processes' PCB. */
   struct list children_pcb_list;
-
-  /* Pointer to parent thread. */
-  struct thread *parent;
 #endif
 
   /* Owned by thread.c. */
