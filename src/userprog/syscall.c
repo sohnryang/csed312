@@ -3,7 +3,9 @@
 #include <string.h>
 #include "bitmap.h"
 #include "devices/shutdown.h"
+#include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "filesys/off_t.h"
 #include "list.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
@@ -210,10 +212,20 @@ static int
 filesize (void *esp)
 {
   int fd;
+  struct file_descriptor *fd_object;
+  off_t res;
 
   pop_arg (int, fd, esp);
 
-  // todo: implement
+  fd_object = process_get_fd (fd);
+  if (fd_object == NULL)
+    process_trigger_exit (-1);
+
+  thread_fs_lock_acquire ();
+  res = file_length (fd_object->file);
+  thread_fs_lock_release ();
+
+  return res;
 }
 
 /* Read from file descriptor. */
