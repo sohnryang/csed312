@@ -287,8 +287,15 @@ static int
 close (void *esp)
 {
   int fd;
+  struct file_descriptor *fd_object;
 
   pop_arg (int, fd, esp);
 
-  // TODO: implement
+  fd_object = process_get_fd (fd);
+  if (fd_object == NULL)
+    process_trigger_exit (-1);
+
+  process_cleanup_fd (fd_object);
+
+  return 0;
 }
