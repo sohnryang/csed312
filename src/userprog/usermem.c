@@ -63,13 +63,14 @@ usermem_memcpy_from_user (void *dst, const void *usrc, size_t n)
   uint8_t *dst_byte;
   const uint8_t *src_byte;
   int byte;
+  size_t i;
 
   if (!contained_in_user (usrc, n))
     return NULL;
 
   dst_byte = dst;
   src_byte = usrc;
-  for (size_t i = 0; i < n; i++)
+  for (i = 0; i < n; i++)
     {
       byte = usermem_copy_byte_from_user (src_byte);
       if (byte == -1)
@@ -90,13 +91,14 @@ usermem_memcpy_to_user (void *udst, const void *src, size_t n)
   uint8_t *dst_byte;
   const uint8_t *src_byte;
   bool res;
+  size_t i;
 
   if (!contained_in_user (udst, n))
     return NULL;
 
   dst_byte = udst;
   src_byte = src;
-  for (size_t i = 0; i < n; i++)
+  for (i = 0; i < n; i++)
     {
       res = usermem_copy_byte_to_user (dst_byte, *src_byte);
       if (!res)
