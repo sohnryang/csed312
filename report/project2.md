@@ -237,6 +237,8 @@ Command line은 Spacing*(Might be multi-spaced)* 된 인자를 공백 기준으�
 
 ### Denying Writes to Executables
 
+`process.c`의 `load` 내에서  `filesys_open`을 통해 실행할 파일을 open하고,  현재 실행되는 프로세스의 PCB의 `exe_file` 필드에 열려 있는 파일을 추가하였다. `load` 과정이 최종적으로 종료될 때 (`success = true` 이후) 해당 파일에 대한 작성을 `file_deny_write`를 통해 막는다. - `load` 과정에서 `fs_lock`은 `file_open`을 사용하기 위해 `thread_fs_lock_acquire`를 수행하고, `goto`에 따라 `file_deny_write`를 수행 여부가 결정되며, 최종적으로 label `done`에서 `thread_fs_lock_release`를 수행한다.
+
 ## Discussion
 
 ### Bug Fixes
