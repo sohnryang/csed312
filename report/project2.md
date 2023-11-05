@@ -132,13 +132,12 @@ Command line은 Spacing*(Might be multi-spaced)* 된 인자를 공백 기준으�
 `filename`을 복사해서 사용하는 이유는 다음과 같다.
 
 * `filename`은 `process_execute`의 인자로 들어가게 되고,  `thread_create`으로 `start_process`를 실행하는 스레드를 생성하게 된다. 최종적으로 `filename`이 `start_process`의 인자로 전달되었을 때, `void*` 로 전달되기 떄문에 Constantness를 보장하기 어렵다. 따라서 복사해서 해당 string을 사용해야만 한다.
-* 최종적으로 `process_execute`의 반환은 Caller에게 (부모 프로세스) 자식의 PID를 반환한다.
 
-`process_execute`의 실행 이후 복사했던 `filename`을 할당 해제하고, 반환된 PID를 통해 자식 프로세스를 찾는다. 이후 자식의 load가 끝날 때까지 기다리며 (자식의 `load_sema`를 `sema_down`한다) 정상적으로 Load 되었는지 판별한다.
+최종적으로 `process_execute`의 반환은 Caller에게 (부모 프로세스) 자식의 PID를 반환한다. `process_execute`의 실행 이후 복사했던 `filename`을 할당 해제하고, 반환된 PID를 통해 자식 프로세스를 찾는다. 이후 자식의 load가 끝날 때까지 기다리며 (자식의 `load_sema`를 `sema_down`한다) 정상적으로 Load 되었는지 판별한다.
 
 ##### `wait`
 
-* 해당 Syscall에서 요구하는 인자는 1개로, 자식 프로세스의 PID를 스택에서 pop한다.
+* 해당 Syscall에서 요구하는 인자는 1개로, 자식 프로세스의 `int pid`를 스택에서 pop한다.
 * 반환되는 값은 (유효한 자식 프로세스의 PID인 경우) 자식 Process의 exit code / (그렇지 않은 경우) `-1`을 반환한다.
 
 자식 프로세스의 `exit_sema`를 `sema_down`한다. *(→ 자식 프로세스의 `exit` Syscall에서 동일한 semaphore를 `sema_up`한다.)*  - 자식 프로세스가 종료된 시점에 Synchronizate한다.
@@ -147,23 +146,94 @@ Command line은 Spacing*(Might be multi-spaced)* 된 인자를 공백 기준으�
 
 #### File Manipuliation
 
+여러 프로세스가 동시에 파일에 접근하게 된다면 파일과 관련된 Operation을 진행하면서 Undefined behavior가 발생할 수 있다. 따라서 모든 File system 관련 System Call이 호출될 때, 단 한 프로세스만이 파일에 접근해야 하는 Atomicity를 가진다. 이를 전역적으로 공유하는 `fs_lock` Lock을 사용해 구현하였다. 파일 시스템 관련 Syscall 호출에서  Critical Section은 `filesys_{operation}` 형태의 함수이며, 이에 접근 시 `thread_fs_lock_acquire`을 수행하고 Critical Section을 벗어나면서 `thread_fs_lock_release`를 수행한다. (이하 보고서에 `fs_lock`을 사용하지 않은 경우에만 명시하였으며, `fs_lock`에 대한 언급이 엇ㅂ는 `filesys_{operation}` 형태의 Syscall 호출은 모두 `fs_lock`을 사용하여 Atomicity를 관리한다.)
+
+파일 관련 System Call에서 인자로 파일의 이름 (`const char*` type)을 전달 시, 앞서 설명한 이유와 동일한 이유로 string을 복사하여 전달하게 된다. 복사 받을 메모리를 할당하는 과정에서 문제가 발생하는 경우 `process_trigger_exit(-1)`을 명시하여 비정상적 종료로 처리하였다.
+
 ##### `create`
+
+* 해당 Syscall에서 요구하는 인자는 2개로, 생성할 파일의 이름 `const char *filename`과 그 크기 `unsigned initial_size`를 순서대로 stack에서 pop한다.
+* 반환되는 값은 파일 생성 성공 여부이다. `filename`을 복사하지 못했거나, `filename`이 empty string인 경우에도 생성 실패를 반환한다.
 
 ##### `remove`
 
+* 해당 Syscall에서 요구하는 인자는 1개로, 삭제할 파일의 이름 `const char *filename`을 stack에서 pop한다.
+* 반환되는 값은 파일 삭제 성공 여부이다. `filename`을 복사하지 못한 경우에도 삭제 실패를 반환한다.
+
 ##### `open`
+
+* 해당 Syscall에서 요구하는 인자는 1개로, 열 파일의 이름 `const char *filename` 을 stack에서 pop한다.
+* 반환되는 값은 (정상적으로 수행된 경우) 연 파일의 File descriptor / (`filesys_open`에서 실패하거나 메모리 할당에 실패한 경우) `-1`을 반환한다.
+
+
+
+* File descriptor를 할당하기 위해 `process_get_first_free_fd_num` 함수를 정의하였다.
+  * 현재 프로세스 PCB의 `file_descriptor_list`에 첫 번째로 비어 있는 File descriptor를 찾는다.
+  * `struct file_descriptor*`에 할당할 FIle descriptor를 설정하고, `filesys_open`을 통해 연 파일을 지정해 준 뒤 file descriptor 순서에 따라`file_descriptor_list`에 삽입한다.
+
 
 ##### `filesize`
 
+* 해당 Syscall에서 요구하는 인자는 1개로, filesize를 구할 파일의 File descriptor`int fd`를 stack에서 pop한다.
+* 반환되는 값은 주어진 `fd`에 해당하는 파일의 filesize를 반환한다.
+
+
+
+다음의 두 Syscall `read`와 `write`는 파일의 값을 메모리로 직접 읽어오거나 / 메모리의 값을 직접 파일로 쓰지 않고 버퍼를 거쳐 입출력을 진행하게 된다. 버퍼는 `palloc_get_page`를 통해 Syscall 함수 초입에 할당받으며, 모든 Operation이 끝난 뒤 Syscall 함수가 return하기 전에 `palloc_free_page`를 통해 할당 해제하였 다. 버퍼를 할당받지 못한 경우에는 Syscall에서 `0`을 반환하며 (아무 정보도 읽거나 쓰지 못함), 버퍼로부터 / 버퍼로의 메모리 복사가 실패한 경우 해당 프로세스는 비정상 종료된다.
+
 ##### `read`
+
+* 해당 Syscall에서 요구하는 인자는 3개로, 읽을 파일의 File descriptor`int fd`와 저장할 주소 `void* buf`, 읽어올 크기 `unsigned length`를 순서대로 stack에서 pop한다.
+* 반환되는 값은 실제로 읽은 길이를 반환한다.
+
+
+
+* 비정상 종료로 오류를 처리하는 경우에  `STDOUT`에서 읽어오는 경우를 추가했다. (`screen_out`이 참인 경우)
+* 이후 File descriptor에 해당하는 파일로부터 `read_buffer`를 거쳐서 읽어온다. (복사 실패 시 할당된 메모리를 할당 해제 후 비정상 종료)
+  * `STDIN` (`keyboard_in`이 참인 경우): **`fs_lock`을 acquire/release하지 않고** `getc`를 통해 buffer address에 character를 복사한다.
+  * 그 외의 경우 `file_read`를 통해 파일을 읽고, 읽은 크기를 비교하며 buffer address에 읽은 값을 복사한다.
 
 ##### `write`
 
+* 해당 Syscall에서 요구하는 인자는 3개로, 작성할 파일의 File descriptor`int fd`와 작성할 데이터의 주소 `void* buf`,  작성할 크기 `unsigned length`를 순서대로 stack에서 pop한다.
+* 반환되는 값은 실제로 작성한 길이를 반환한다.
+
+
+
+* 비정상 종료로 오류를 처리하는 경우는 `STDIN`에서 쓰는 경우를 추가했다. (`keyboard_in`이 참인 경우)
+* 이후 `write_buffer`에 작성할 내용을 복사하고, File descriptor에 해당하는 파일에 작성한다. (버퍼에 복사 실패 시 할당된 메모리를 할당 해제 후 비정상 종료)
+  * `STDOUT` (`screen_out`이 참인 경우): **`fs_lock`을 acquire/release하지 않고** `putbuf`를 통해 표준 출력을 수행한다.
+  * 그 외의 경우 `file_write`를 통해 파일을 작성한다.
+
 ##### `seek`
+
+* 해당 Syscall에서 요구하는 인자는 2개로, 파일의 File descriptor`int fd`와 커서의 위치 `unsigned position`을 순서대로 stack에서 pop한다.
+* 반환되는 값은 없다. (다만, 이를 `syscall_func`  type에 맞추기 위해 명시적으로 `0`을 반환하였다.)
+
+
+
+* 비정상 종료로 오류를 처리하는 경우에 File descriptor의 해당 파일이 없는 경우(`STDIN`  및 `STDOUT`)의 `seek` Syscall 호출을 추가하였다.
+* 이후 `file_seek`를 통해 파일의 커서를 주어진 `position`으로 옮긴다.
 
 ##### `tell`
 
+* 해당 Syscall에서 요구하는 인자는 1개로, 파일의 File descriptor `int fd`를 stack에서 pop한다.
+
+* 반환되는 값은 해당 파일의 커서 위치를 반환한다.
+
+  
+
+* 비정상 종료로 오류를 처리하는 경우에 File descriptor의 해당 파일이 없는 경우(`STDIN`  및 `STDOUT`)의 `tell` Syscall 호출을 추가하였다.
+* 이후 `file_tell`을 통해 파일의 커서를 반환한다.
+
 ##### `close`
+
+* 해당 Syscall에서 요구하는 인자는 1개로, 닫을 파일의 File descriptor `int fd`를 stack에서 pop한다.
+* 반환되는 값은 없다. (다만, 이를 `syscall_func`  type에 맞추기 위해 명시적으로 `0`을 반환하였다.)
+* `process_cleanup_fd`를 정의하여 호출하였다.
+  * 해당 함수 내에서는 `file_close`를 사용하여 파일을 닫고, 프로세스 PCB의 `file_descriptor_list`에서  닫을 파일의 `elem`을 제거한다.
+  * 이후 할당받았던 `struct file_descriptor`를 할당 해제한다.
+
 
 ### Denying Writes to Executables
 
