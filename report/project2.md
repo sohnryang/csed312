@@ -251,5 +251,72 @@ Command line은 Spacing*(Might be multi-spaced)* 된 인자를 공백 기준으�
 
 ## Discussion
 
-### Bug Fixes
+### File Descriptor Number Allocation
 
+`open` system call을 통해 파일을 열 때, 사용자 프로세스는 열어놓은 파일을 참조하는데 사용할 file descriptor 번호를 부여받게 된다. 핀토스 문서에서는 이 번호의 부여 방식에 대해 명시적으로 규정해 놓지 않았지만, POSIX 표준에 따르면 프로세스가 사용하지 않는 file descriptor 중에서 가장 낮은 숫자를 부여한다고 설명되어 있다. 이 핀토스 구현에서는 POSIX 표준에 따르도록 구현하기 위해 `process_get_first_free_fd_num` 함수를 구현하여 가장 낮은 file descriptor 번호를 가져오도록 하였다.
+
+해당 기능은 커밋 `6a733c3`에서 구현되었다.
+
+### Out-of-Memory Handling
+
+핀토스에서는 `palloc_get_page` 등의 함수로 메모리를 할당할 때, 남은 공간이 없다면 `NULL`을 반환한다. `NULL` 포인터를 참조하는 버그를 막고, 메모리가 부족한 상황에서도 OS가 안정적으로 동작하도록 하기 위해 `start_process`, `open`, `read`, `write` 등의 함수에서 메모리 할당이 실패한다면 사용자 프로세스를 종료시키는 등의 처리를 추가하였다.
+
+해당 기능은 커밋 `82b0850`에서 구현되었다.
+
+### User Memory Access
+
+사용자 프로그램이 system call을 호출할 때, 커널에서는 system call 번호와 인자 등을 얻기 위해 사용자 메모리를 참조해야 한다. 핀토스 문서에서도 설명되었듯 이를 구현하는 데에는 크게 두 가지 방법이 있다. 포인터가 주어졌을 때 페이지 테이블을 참조해 사용자 메모리인지 확인하거나, `PHYS_BASE`보다 주소가 작은지만 본 다음 참조하고 page fault에서 추가적인 처리를 하는 것이다. 이 핀토스 구현에서는 후자의 방법을 택하여, 사용자 메모리에서 한 바이트를 읽거나 쓰는 함수를 다음과 같이 구현하였다.
+
+```c
+/* Read a byte from `usrc`. Return -1 if page fault occurred while copying. */
+int
+usermem_copy_byte_from_user (const uint8_t *usrc)
+{
+  int res;
+
+  if (!is_valid_uptr (usrc))
+    return -1;
+
+  asm ("movl $1f, %0\n\t"
+       "movzbl %1, %0\n\t"
+       "1:"
+       : "=&a"(res)
+       : "m"(*usrc));
+  return res;
+}
+
+/* Write a byte to `udst`. Return true if success, false if failure. */
+bool
+usermem_copy_byte_to_user (uint8_t *udst, uint8_t byte)
+{
+  int error_code;
+
+  if (!is_valid_uptr (udst))
+    return false;
+
+  error_code = 0;
+  asm ("movl $1f, %0\n\t"
+       "movb %b2, %1\n\t"
+       "1:"
+       : "=&a"(error_code), "=m"(*udst)
+       : "q"(byte));
+  return error_code != -1;
+}
+```
+
+함수에 적힌 inline assembly를 따라가 보면, `1:`로 표시된 레이블의 주소를 a register, 즉 eax 레지스터에 우선 적고, `movzbl`을 통한 메모리 접근을 수행하는 것을 볼 수 있다. 주어진 포인터에 문제가 없다면 함수는 정상적으로 반환돨 것이고, 비정상적인 주소가 주어졌다면 page fault handler가 실행된다.
+
+```c
+  /* Handle page faults caused by user memory access from kernel. */
+  else if (fault_addr < PHYS_BASE)
+    {
+      f->eip = (void *)f->eax;
+      f->eax = -1;
+      return;
+    }
+
+```
+
+Page fault handler에서는 위 코드와 같이 page fault가 일어난 주소가 `PHYS_BASE` 미만의 주소라면 사용자 프로세스의 메모리를 접근하는 함수에서 오류가 발생한 것으로 간주한다. Page fault는 `movzbl` 명령어에서 발생할 것이기 때문에 eip 레지스터는 eax 레지스터에 아직 저장되어 있는 `1:` 레이블의 주소로 대치되고, eax 레지스터에는 -1이 저장된 뒤 함수의 `1:` 레이블로 실행 흐름이 돌아오게 되어 `res` 혹은 `error_code` 변수에 -1이 저장되게 되고, 함수에서 메모리 참조 오류가 발생하였는지 쉽게 판정할 수 있다. 이와 같은 방법은 포인터 참조 전에 일일이 포인터를 검사하는 것보다 더 빠르기 때문에, 리눅스와 같은 OS에서도 구현되어 있는 것을 볼 수 있다.
+
+한 바이트씩 읽어오는 함수만을 사용하는 것은 불편하기 때문에, `usermem.c` 파일에 `memcpy`, `strlcpy` 등과 유사한 함수를 작성하여 system call 관련 코드에서 활용하였다.
