@@ -123,6 +123,45 @@ struct frame
 
 ### Lazy Loading
 
+#### Requirement
+
+현재 핀토스의 구현에서는 사용자 프로그램이 로드될 때, 실행 파일의 코드와 데이터가 메모리에 직접 로드된다. 가상 메모리를 사용하여 실행 파일 로드 시점이 아니라, 로드할 데이터가 처음 사용될 때 메모리에 데이터를 가져오는 것을 구현하는 것이 이 요구 사항의 목표이다. 실행 파일의 코드와 데이터는 처음 사용 시점에서 로드하고, 프로그램이 사용할 스택 공간만 미리 메모리에 할당할 것이다. 처음 사용되는 시점에서의 할당을 page fault handler에서 수행해야 한다. Page fault handler의 동작은 잘못된 메모리 참조가 일어나는 상황과 같이 disk I/O가 필요하지 않은 상황과, 파일이나 swap 공간에서 데이터를 가져오는 등 disk I/O가 필요한 상황으로 분류할 수 있다. I/O가 필요하지 않은 코드 경로는 I/O가 필요한 코드 경로보다 먼저 실행되어야 한다.
+
+#### Plans
+
+사용자 프로그램의 실행 파일에서 데이터를 읽어오는 것은 일종의 read-only file mapping으로 간주할 수 있을 것이다. 프로세스의 실행 파일에서 데이터를 읽어오는 작업은 `load_segment` 함수에서 실행되는데, 이 함수에서 실행 파일을 읽는 대신 파일의 로드할 부분을 `PGSIZE` 단위로 잘라 각 부분에 대해 read-only memory mapping을 만들 수 있다. 이를 코드로 나타내면 다음과 같다.
+
+```c
+	pos = 0
+	while (read_bytes > 0 || zero_bytes > 0)
+    {
+      /* Calculate how to fill this page.
+         We will read PAGE_READ_BYTES bytes from FILE
+         and zero the final PAGE_ZERO_BYTES bytes. */
+      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+      size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+      if (!vmm_create_file_map (upage, file, writable, ofs + pos,
+                                page_read_bytes))
+        return false;
+      pos += page_read_bytes;
+
+      /* Advance. */
+      read_bytes -= page_read_bytes;
+      zero_bytes -= page_zero_bytes;
+      upage += PGSIZE;
+    }
+```
+
+여기서 `mmap_info` 구조체를 생성하여 프로세스 메모리 공간에 매핑하는 과정을 `vmm_create_file_map` 함수에서 수행한다.
+
+Page fault handler에서는 not present 오류 상황에서, 다음과 같은 규칙으로 page fault의 원인을 식별한다.
+
+1. 사용자 코드에서 PF가 발생한 경우: stack growth가 가능한 상황인지 확인하고, 그렇지 않다면 프로세스의 비정상적인 메모리 접근
+2. 커널 코드에서 PF가 발생한 경우:
+   1. System call을 실행 중인 경우: stack growth가 가능한 상황인지 확인하고, 그렇지 않다면 비정상적인 포인터가 system call에 주어진 상황
+   2. System call 상황이 아닌 경우: disk에서 메모리로 데이터 로드
+
 ### Supplemental Page Table
 
 ### Stack Growth
