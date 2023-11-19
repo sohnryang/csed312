@@ -207,6 +207,36 @@ Page fault handler를 수정하여 프로세스의 스택 메모리 영역에서
 
 ### File Memory Mapping
 
+#### Requirement
+
+File descriptor가 주어졌을 때, 파일을 사용자 프로세스의 메모리로 mapping하여 메모리 읽기/쓰기를 통해 file I/O를 수행하는 것을 memory mapped file이라고 한다. 파일을 mapping하기 위해 사용하는 system call은 다음과 같다.
+
+```c
+mapid_t mmap(int fd, void *addr);
+void munmap(mapid_t mapping);
+```
+
+`mmap`은 `fd` file descriptor로 열린 파일을 `addr` 주소에 mapping한다. 만약 파일이 화면이나 키보드에 연결되거나, 열려 있지 않은 파일을 mapping하려고 시도하거나, `addr`이 page-aligned된 빈 공간을 가리키지 않는 등 비정상적인 mapping을 만드려는 상황에서는 -1을 반환하고, 정상적으로 mapping이 이루어질 경우에는 `open` system call이 file descriptor를 반환했던 것처럼 mapping id를 반환한다. 이 mapping id는 `munmap` 함수에서 mapping을 해제할 때 사용한다. 여러 프로세스가 같은 파일을 mapping했을 때, 두 프로세스에서 일관된 데이터를 읽는 것을 보장할 필요는 없다.
+
+#### Plans
+
+앞서 [Supplemental Page Table](#Supplemental Page Table)에서 설명한 것과 같이 `mmap_info` 구조체에 memory mapping에 대한 정보를 저장한다. `file` 포인터에는 현재 메모리에 mapping되어 있는 파일을 지정하고, 만약 mapping이 anonymous mapping이라면, 즉 파일을 mapping한 것이 아니라면 `NULL`을 저장한다. `writable` 필드는 현재 mapping에 쓰기가 가능한지, `offset` 필드는 mapping된 파일의 오프셋, `mapped_size`는 mapping된 데이터의 크기를 나타낸다. `offset`, `mapped_size` 필드는 anonymous mapping의 경우에는 무시된다. `mmap_info` 구조체는 한 페이지 단위로 분할하여 파일을 mapping하기 때문에, `mmap`, `munmap` system call에서 한 페이지 단위로 mapping을 관리하는 데에는 불편함이 있을 것이다. 이를 해소하기 위하여 `mmap` system call으로 만들어진 mapping들은 `mmap_user_block` 구조체를 사용하여 한 파일에 대한 mapping 모두를 모을 수 있도록 설계하였다.
+
+```c
+/* Struct describing whole file mapped to user memory. Intended for collecting
+   memory mappings created by mmap system call. */
+struct mmap_user_block
+{
+  mapid_t id;        /* Map ID of mapping. */
+  struct file *file; /* File that is mapped to memory. */
+
+  struct list chunks;    /* List of `mmap_info`s. */
+  struct list_elem elem; /* Element for mmap_blocks list. */
+};
+```
+
+`mmap_user_block` 구조체에서는 한 개의 `mmap` system call으로 만들어진 `id`번 mapping 정보를 저장한다. 이 구조체의 `chunks` 리스트에 페이지 단위로 분할된 `mmap_info`에 담긴 mapping 정보가 리스트 형태로 저장된다. `mmap_user_block` 구조체는 `elem` 필드를 사용하여 프로세스가 실행 중인 스레드의 `mmap_blocks` 리스트에서 접근 가능하도록 설계하였다.
+
 ### Swap Table
 
 ### On-Process Termination
