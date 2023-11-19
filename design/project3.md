@@ -91,6 +91,36 @@ Pintos 내에서 페이지를 할당하도록 노출된 함수는 `palloc ` 계�
 
 ### Frame Table
 
+#### Requirement
+
+Physical memory는 page frame 단위로 관리되고, 각 page frame을 모아 관리할 자료 구조가 필요하다. Frame table은 OS가 사용 중인 각 page frame마다 해당되는 physical address와 메타데이터를 저장하고 관리한다. Frame table은 핀토스에서 eviction policy 등을 구현할 때 활용할 수 있다. Frame table의 목적은 사용자 프로세스가 사용하는 page frame을 관리하는 것이기 때문에, frame table이 관리하는 page는 user pool에서 할당되어야 한다.
+
+#### Plans
+
+우선 각각의 page frame의 정보를 저장하는 `frame` 구조체는 다음과 같이 정의된다.
+
+```c
+/* Physical frame. */
+struct frame
+{
+  void *kpage; /* Address to a page from user pool. */
+
+  bool is_stub;        /* Is this frame a stub frame? */
+  bool is_swapped_out; /* Is this frame swapped out? */
+
+  struct list mappings;  /* List of mappings. */
+  struct list_elem elem; /* Element for frame table. */
+
+  ...
+};
+```
+
+여기서 `kpage`는 user pool에서 얻어 온 page 주소를 저장하고, `is_stub`, `is_swapped_out`은 각각 이 `frame`이 stub이거나 swap-out 상태인지를 나타낸다. 이 구현에서는 memory의 mapping이 처음 만들어질 때 그에 해당하는 `frame` 구조체가 하나 할당되는데, 이 구조체는 우선 `kpage`가 `NULL` 상태로 초기화되었다, demand paging 등에 의해 실제 메모리 공간을 받는다. 이때 아직 실제 메모리 공간을 할당받지 않은 상태를 stub 상태로 정의한다.
+
+`mappings` 필드는 이 page frame에 mapping되어 있는 가상 주소들의 정보를 [File Memory Mapping](#File Memory Mapping)에서 설명할 `mmap_info` 구조체의 리스트로 저장한다. Demand paging이나 swapping 등에서는 page frame 단위로 이루어지기 때문에, page frame을 메모리로 읽어오거나 디스크에 저장할 때 이 `mappings` 리스트에 있는 `mmap_info` 정보에 따라 읽기/쓰기를 진행한다.
+
+각 프로세스가 사용 중인 page frame 정보는 `elem` 필드를 사용하여 각 프로세스의 스레드마다 가지고 있는 `frames` 리스트에 저장되며, 이것이 frame table의 역할을 한다.
+
 ### Lazy Loading
 
 ### Supplemental Page Table
