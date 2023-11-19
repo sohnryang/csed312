@@ -119,7 +119,7 @@ struct frame
 
 `mappings` 필드는 이 page frame에 mapping되어 있는 가상 주소들의 정보를 [File Memory Mapping](#File Memory Mapping)에서 설명할 `mmap_info` 구조체의 리스트로 저장한다. Demand paging이나 swapping 등에서는 page frame 단위로 이루어지기 때문에, page frame을 메모리로 읽어오거나 디스크에 저장할 때 이 `mappings` 리스트에 있는 `mmap_info` 정보에 따라 읽기/쓰기를 진행한다.
 
-각 프로세스가 사용 중인 page frame 정보는 `elem` 필드를 사용하여 각 프로세스의 스레드마다 가지고 있는 `frames` 리스트에 저장되며, 이것이 frame table의 역할을 한다.
+각 프로세스가 사용 중인 page frame 정보는 `elem` 필드를 사용하여 각 프로세스의 스레드마다 가지고 있는 `frames` 리스트에 저장되며, 이것이 frame table의 역할을 한다.
 
 ### Lazy Loading
 
@@ -163,6 +163,37 @@ Page fault handler에서는 not present 오류 상황에서, 다음과 같은 �
    2. System call 상황이 아닌 경우: disk에서 메모리로 데이터 로드
 
 ### Supplemental Page Table
+
+#### Requirement
+
+페이지 테이블에 저장되는 정보는 페이지의 가상 주소에 대응되는 물리 주소와, 페이지의 접근 권한 등 한정된 정보만이 저장된다. 핀토스와 같은 OS에서 lazy loading, swapping 등이 정상적으로 동작하기 위해서는 각 페이지에 대해 page table에 저장되는 것 외에 추가적인 데이터를 저장할 필요가 있다. 이러한 추가적인 정보를 저장하기 위해 supplemental page table을 사용한다. Page fault handler에서는 supplemental page table에 있는 정보를 통해 page fault가 발생한 주소에 어떤 데이터를 로드할지 결정한다.
+
+#### Plans
+
+핀토스의 사용자 프로그램이 사용하는 메모리는 파일에서 매핑된 file-mapped와 디스크의 파일과는 상관없이 동작하는 anonymous mapping이 존재한다. 각 페이지에는 한 가지 mapping만 존재하므로, 각 페이지를 mapping으로 관리할 수 있다. 이 핀토스 구현에서는 이 점을 이용하여 supplemental page table과 mapping table을 합치는 방식으로 구현할 것이다. 각 페이지의 데이터는 `mapping_info` 구조체에 저장하는 설계를 생각할 수 있다.
+
+```c
+/* Struct describing memory mapped object. */
+struct mmap_info
+{
+  void *upage;       /* User page the file is mapped to. */
+  struct file *file; /* Pointer to mapped file. Set to NULL if the mapping is
+                        anonymous. */
+
+  bool writable;        /* Whether the mapping is writable. */
+  off_t offset;         /* Offset of mapped file. */
+  uint32_t mapped_size; /* Size of mapped data. */
+
+  struct list_elem elem; /* Element for linked list in frame. */
+  struct frame *frame;   /* Pointer to frame object. */
+
+  struct hash_elem map_elem; /* Element for mapping table. */
+
+  struct list_elem chunk_elem; /* Element for chunks list. */
+};
+```
+
+`upage` 필드는 mapping이 가지는 가상 주소를 저장한다. `frame` 필드는 mapping이 저장되는 프레임을 가리키고, 한편 `frame` 구조체의 `mappings` 리스트에서 `mmap_info` 구조체를 저장할 수 있도록 `elem` 필드를 사용하도록 한다. 이 `mmap_info` 구조체는 가상 주소를 통해 손쉽고 효율적으로 참조할 수 있도록 해시 테이블을 사용할 것이다. 프로세스가 가진 mapping의 `mmap_info` 구조체는 `hash_elem` 필드를 사용하여 프로세스의 스레드 구조체마다 가지고 있는 `mmaps` 해시 테이블으로 참조할 수 있다.
 
 ### Stack Growth
 
