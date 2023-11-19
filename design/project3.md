@@ -235,9 +235,17 @@ struct mmap_user_block
 };
 ```
 
-`mmap_user_block` 구조체에서는 한 개의 `mmap` system call으로 만들어진 `id`번 mapping 정보를 저장한다. 이 구조체의 `chunks` 리스트에 페이지 단위로 분할된 `mmap_info`에 담긴 mapping 정보가 리스트 형태로 저장된다. `mmap_user_block` 구조체는 `elem` 필드를 사용하여 프로세스가 실행 중인 스레드의 `mmap_blocks` 리스트에서 접근 가능하도록 설계하였다.
+`mmap_user_block` 구조체에서는 한 개의 `mmap` system call으로 만들어진 `id`번 mapping 정보를 저장한다. 이 구조체의 `chunks` 리스트에 페이지 단위로 분할된 `mmap_info`에 담긴 mapping 정보가 리스트 형태로 저장된다. `mmap_user_block` 구조체는 `elem` 필드를 사용하여 프로세스가 실행 중인 스레드의 `mmap_blocks` 리스트에서 접근 가능하도록 설계하였다.
 
 ### Swap Table
+
+#### Requirement
+
+Page frame을 할당받아야 하는 상황에서, 만약 메모리에 남아 있는 page frame이 없다면 frame 중 하나를 골라 evict하는 과정이 필요하다 이때 swap 공간에서 page frame이 저장될 자리인 slot을 관리하는 자료 구조가 필요하고, 이를 swap table이라고 한다. swap table은 swap out, swap in 동작에서 사용 가능한 slot을 추적할 수 있어야 한다. Lazy loading에서처럼, swap slot도 eviction 상황에서 필요할 때 lazy하게 할당되어야 한다.
+
+#### Plans
+
+Swap slot은 모두 같은 크기를 가지기 때문에 swap out 상황에서는 swap slot 중 어디에 데이터를 저장하든 데이터를 저장한 곳만 알고 있다면 문제가 되지 않는다. 핀토스에서는 이러한 상황을 위해 `bitmap` 자료 구조가 구현되어 있다. Swap slot이 `n`개 있을 때 `n`개의 bit를 가지는 `bitmap`을 생성한 뒤, 각 slot마다 사용되고 있는지의 여부를 `n`개의 비트를 사용하여 저장하는 방식을 사용하면 될 것이다.
 
 ### On-Process Termination
 
