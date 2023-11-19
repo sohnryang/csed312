@@ -170,7 +170,7 @@ Page fault handler에서는 not present 오류 상황에서, 다음과 같은 �
 
 #### Plans
 
-핀토스의 사용자 프로그램이 사용하는 메모리는 파일에서 매핑된 file-mapped와 디스크의 파일과는 상관없이 동작하는 anonymous mapping이 존재한다. 각 페이지에는 한 가지 mapping만 존재하므로, 각 페이지를 mapping으로 관리할 수 있다. 이 핀토스 구현에서는 이 점을 이용하여 supplemental page table과 mapping table을 합치는 방식으로 구현할 것이다. 각 페이지의 데이터는 `mapping_info` 구조체에 저장하는 설계를 생각할 수 있다.
+핀토스의 사용자 프로그램이 사용하는 메모리는 파일에서 매핑된 file mapping과 디스크의 파일과는 상관없이 동작하는 anonymous mapping이 존재한다. 각 페이지에는 한 가지 mapping만 존재하므로, 각 페이지를 mapping으로 관리할 수 있다. 이 핀토스 구현에서는 이 점을 이용하여 supplemental page table과 mapping table을 합치는 방식으로 구현할 것이다. 각 페이지의 데이터는 `mapping_info` 구조체에 저장하는 설계를 생각할 수 있다.
 
 ```c
 /* Struct describing memory mapped object. */
@@ -247,5 +247,12 @@ Page frame을 할당받아야 하는 상황에서, 만약 메모리에 남아 �
 
 Swap slot은 모두 같은 크기를 가지기 때문에 swap out 상황에서는 swap slot 중 어디에 데이터를 저장하든 데이터를 저장한 곳만 알고 있다면 문제가 되지 않는다. 핀토스에서는 이러한 상황을 위해 `bitmap` 자료 구조가 구현되어 있다. Swap slot이 `n`개 있을 때 `n`개의 bit를 가지는 `bitmap`을 생성한 뒤, 각 slot마다 사용되고 있는지의 여부를 `n`개의 비트를 사용하여 저장하는 방식을 사용하면 될 것이다.
 
-### On-Process Termination
+### On Process Termination
 
+#### Requirement
+
+사용자 프로세스가 종료될 때, 프로세스가 사용하고 있는 모든 자원은 반납되어야 한다.
+
+#### Plans
+
+이미 project 2에서 프로세스가 연 파일과 같은 자원을 반납하도록 코딩하였고, project 3에서 추가되는 자원에 주의하면 될 것이다. 이번 project 3에서 추가되는 사용자 프로세스의 자원은 크게 mapping 정보, page frame, swap space와 virtual memory 동기화를 위한 lock이 있다고 볼 수 있다. 비정상, 정상 종료와 상관없이 project 2의 구현에서 `process_trigger_exit` 함수를 통하여 프로세스가 종료되도록 하였다. 이 `process_trigger_exit` 함수에서 프로세스가 사용하고 있던 swap 공간을 반납하고, stub이나 swap-out 상태가 아닌 page frame 또한 free 되어야 한다. file mapping 정보의 경우에는 프로세스 종료 시점에서 dirty bit가 설정되었을 경우 파일에 write를 수행한다. virtual memory 동기화를 위한 lock의 경우에는 현재 프로세스가 lock 가지고 있는지의 여부를 추적하다가, 프로세스 종료 시점에서 가지고 있는 lock을 release하는 방법으로 반납할 수 있을 것이다.
