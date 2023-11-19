@@ -193,9 +193,17 @@ struct mmap_info
 };
 ```
 
-`upage` 필드는 mapping이 가지는 가상 주소를 저장한다. `frame` 필드는 mapping이 저장되는 프레임을 가리키고, 한편 `frame` 구조체의 `mappings` 리스트에서 `mmap_info` 구조체를 저장할 수 있도록 `elem` 필드를 사용하도록 한다. 이 `mmap_info` 구조체는 가상 주소를 통해 손쉽고 효율적으로 참조할 수 있도록 해시 테이블을 사용할 것이다. 프로세스가 가진 mapping의 `mmap_info` 구조체는 `hash_elem` 필드를 사용하여 프로세스의 스레드 구조체마다 가지고 있는 `mmaps` 해시 테이블으로 참조할 수 있다.
+`upage` 필드는 mapping이 가지는 가상 주소를 저장한다. `frame` 필드는 mapping이 저장되는 프레임을 가리키고, 한편 `frame` 구조체의 `mappings` 리스트에서 `mmap_info` 구조체를 저장할 수 있도록 `elem` 필드를 사용하도록 한다. 이 `mmap_info` 구조체는 가상 주소를 통해 손쉽고 효율적으로 참조할 수 있도록 해시 테이블을 사용할 것이다. 프로세스가 가진 mapping의 `mmap_info` 구조체는 `hash_elem` 필드를 사용하여 프로세스의 스레드 구조체마다 가지고 있는 `mmaps` 해시 테이블으로 참조할 수 있다.
 
 ### Stack Growth
+
+#### Requirement
+
+핀토스의 기존 구현에서, 각 프로세스의 스택 크기는 1페이지로 고정되어 있다. 여기에서는 demand paging 기법을 활용하여 프로세스의 스택 공간이 필요에 따라 늘어나는 메커니즘을 구현한다.
+
+#### Plans
+
+Page fault handler를 수정하여 프로세스의 스택 메모리 영역에서 페이지 폴트가 일어나는 상황에 메모리를 할당받는 방법으로 구현할 수 있다. x86의 `push` instruction은 stack pointer의 값을 바꾸기 전에 permission check를 수행하기 때문에, 한번에 `n` 바이트를 push하는 상황이라면 esp 레지스터 아래 `n` 바이트에서 page fault가 일어날 수 있다. 가장 많은 데이터를 push하는 명령어, `pusha` 명령어는 32바이트를 push하기 때문에, esp 레지스터 아래 최대 32바이트에서 page fault가 일어나는 상황에서 스택 공간을 새로 할당받도록 구현하면 될 것이다. 또한, system call boundary에서 stack access가 처음 일어나는 경우에는 커널 코드가 실행되는 도중에 page fault가 발생하므로 `intr_frame` 구조체의 필드를 읽는 방법으로는 원하는 esp 값을 읽어올 수 없다. 이 경우에는 사용자 코드가 실행되던 중의 esp 값을 따로 저장할 필요가 있다. 또한, 다른 OS와 같이 최대로 스택이 자랄 수 있는 크기도 제한할 필요가 있다.
 
 ### File Memory Mapping
 
