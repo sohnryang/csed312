@@ -21,19 +21,19 @@
 static void syscall_handler (struct intr_frame *);
 
 typedef int syscall_func (void *esp);
-static syscall_func halt NO_RETURN;
+static syscall_func halt_ NO_RETURN;
 static syscall_func exit_ NO_RETURN;
-static syscall_func exec;
-static syscall_func wait;
-static syscall_func create;
-static syscall_func remove;
-static syscall_func open;
-static syscall_func filesize;
-static syscall_func read;
-static syscall_func write;
-static syscall_func seek;
-static syscall_func tell;
-static syscall_func close;
+static syscall_func exec_;
+static syscall_func wait_;
+static syscall_func create_;
+static syscall_func remove_;
+static syscall_func open_;
+static syscall_func filesize_;
+static syscall_func read_;
+static syscall_func write_;
+static syscall_func seek_;
+static syscall_func tell_;
+static syscall_func close_;
 
 #define FILE_IO_BUFSIZE 1024
 
@@ -60,8 +60,8 @@ syscall_handler (struct intr_frame *f)
 {
   int syscall_id;
   syscall_func *syscall_table[]
-      = { halt,     exit_, exec,  wait, create, remove, open,
-          filesize, read,  write, seek, tell,   close };
+      = { halt_,     exit_, exec_,  wait_, create_, remove_, open_,
+          filesize_, read_, write_, seek_, tell_,   close_ };
 
   void *esp = f->esp;
   pop_arg (int, syscall_id, esp);
@@ -73,7 +73,7 @@ syscall_handler (struct intr_frame *f)
 
 /* Halt the system. */
 static int
-halt (void *esp UNUSED)
+halt_ (void *esp UNUSED)
 {
   shutdown_power_off ();
   NOT_REACHED ();
@@ -92,7 +92,7 @@ exit_ (void *esp)
 
 /* Run child process. */
 static int
-exec (void *esp)
+exec_ (void *esp)
 {
   const char *filename;
   char *filename_copy;
@@ -120,7 +120,7 @@ exec (void *esp)
 
 /* Wait for child process. */
 static int
-wait (void *esp)
+wait_ (void *esp)
 {
   int pid;
 
@@ -131,7 +131,7 @@ wait (void *esp)
 
 /* Create file. */
 static int
-create (void *esp)
+create_ (void *esp)
 {
   const char *filename;
   char *filename_copy;
@@ -161,7 +161,7 @@ create (void *esp)
 
 /* Remove file. */
 static int
-remove (void *esp)
+remove_ (void *esp)
 {
   const char *filename;
   char *filename_copy;
@@ -183,7 +183,7 @@ remove (void *esp)
 
 /* Open file. */
 static int
-open (void *esp)
+open_ (void *esp)
 {
   const char *filename;
   char *filename_copy;
@@ -220,7 +220,7 @@ open (void *esp)
 
 /* Get size of file. */
 static int
-filesize (void *esp)
+filesize_ (void *esp)
 {
   int fd;
   struct file_descriptor *fd_object;
@@ -241,7 +241,7 @@ filesize (void *esp)
 
 /* Read from file descriptor. */
 static int
-read (void *esp)
+read_ (void *esp)
 {
   int fd;
   void *buffer, *dst;
@@ -305,7 +305,7 @@ read (void *esp)
 
 /* Write to file descriptor. */
 static int
-write (void *esp)
+write_ (void *esp)
 {
   int fd;
   void *buffer, *dst;
@@ -365,7 +365,7 @@ write (void *esp)
 
 /* Move to specific position of file. */
 static int
-seek (void *esp)
+seek_ (void *esp)
 {
   int fd;
   unsigned position;
@@ -387,7 +387,7 @@ seek (void *esp)
 
 /* Get position position of file. */
 static int
-tell (void *esp)
+tell_ (void *esp)
 {
   int fd;
   struct file_descriptor *fd_object;
@@ -408,7 +408,7 @@ tell (void *esp)
 
 /* Close file. */
 static int
-close (void *esp)
+close_ (void *esp)
 {
   int fd;
   struct file_descriptor *fd_object;
