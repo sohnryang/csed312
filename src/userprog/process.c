@@ -722,26 +722,28 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes,
 static bool
 setup_stack (void **esp)
 {
-  uint8_t *kpage;
   bool success = false;
 #ifdef VM
-  void *upage;
-#endif
+  success = vmm_create_anonymous (((uint8_t *)PHYS_BASE) - PGSIZE, true);
+  if (!success)
+    return false;
+  else
+    *esp = PHYS_BASE;
+#else
+  uint8_t *kpage;
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL)
     {
       upage = ((uint8_t *)PHYS_BASE) - PGSIZE;
-#ifdef VM
-      success = vmm_create_anonymous (upage, true);
-#else
       success = install_page (upage, kpage, true);
-#endif
       if (success)
         *esp = PHYS_BASE;
       else
         palloc_free_page (kpage);
     }
+#endif
+
   return success;
 }
 
