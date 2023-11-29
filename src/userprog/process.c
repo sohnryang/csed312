@@ -19,6 +19,11 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#ifdef VM
+#include "vm/mmap.h"
+#include "vm/vmm.h"
+#endif
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static int parse_args (char *cmdline, char **argv);
@@ -147,6 +152,16 @@ start_process (void *file_name_)
       thread_exit ();
     }
 
+#ifdef VM
+  success = vmm_init ();
+  if (!success)
+    {
+      palloc_free_page (file_name);
+      palloc_free_page (argv);
+      thread_exit ();
+    }
+#endif
+
   argc = parse_args (file_name, argv);
   success = load (argv[0], &if_.eip, &if_.esp);
 
@@ -250,6 +265,22 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+#ifdef VM
+  struct list_elem *el;
+#endif
+
+#ifdef VM
+  thread_fs_lock_acquire ();
+  while (!list_empty (&cur->mmap_blocks))
+    {
+      struct mmap_user_block *block;
+      el = list_pop_front (&cur->mmap_blocks);
+      block = list_entry (el, struct mmap_user_block, elem);
+      vmm_cleanup_user_block (block);
+    }
+  thread_fs_lock_release ();
+  vmm_destroy ();
+#endif
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -630,11 +661,19 @@ static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes,
               uint32_t zero_bytes, bool writable)
 {
+#ifdef VM
+  uint32_t pos;
+#endif
+
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
+#ifdef VM
+  pos = 0;
+#else
   file_seek (file, ofs);
+#endif
   while (read_bytes > 0 || zero_bytes > 0)
     {
       /* Calculate how to fill this page.
@@ -643,6 +682,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes,
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+#ifdef VM
+      if (!vmm_create_file_map (upage, file, writable, true, ofs + pos,
+                                page_read_bytes))
+        return false;
+      pos += page_read_bytes;
+#else
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
       if (kpage == NULL)
@@ -662,6 +707,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage, uint32_t read_bytes,
           palloc_free_page (kpage);
           return false;
         }
+#endif
 
       /* Advance. */
       read_bytes -= page_read_bytes;
@@ -678,11 +724,19 @@ setup_stack (void **esp)
 {
   uint8_t *kpage;
   bool success = false;
+#ifdef VM
+  void *upage;
+#endif
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL)
     {
-      success = install_page (((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
+      upage = ((uint8_t *)PHYS_BASE) - PGSIZE;
+#ifdef VM
+      success = vmm_create_anonymous (upage, true);
+#else
+      success = install_page (upage, kpage, true);
+#endif
       if (success)
         *esp = PHYS_BASE;
       else
