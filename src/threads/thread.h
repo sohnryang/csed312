@@ -13,6 +13,10 @@
 #include "threads/synch.h"
 #endif
 
+#ifdef VM
+#include <hash.h>
+#endif
+
 /* States in a thread's life cycle. */
 enum thread_status
 {
@@ -171,6 +175,11 @@ struct thread
 
   /* List of child processes' PCB. */
   struct list children_pcb_list;
+#endif
+
+#ifdef VM
+  struct list frames; /* Frame table. */
+  struct hash mmaps;  /* Mapping table. */
 #endif
 
   /* Owned by thread.c. */
