@@ -7,6 +7,10 @@
 #include "threads/thread.h"
 #include "userprog/process.h"
 
+#ifdef VM
+#include "vm/vmm.h"
+#endif
+
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -126,6 +130,10 @@ page_fault (struct intr_frame *f)
   bool user;        /* True: access by user, false: access by kernel. */
   void *fault_addr; /* Fault address. */
 
+#ifdef VM
+  struct thread *cur;
+#endif
+
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
      data.  It is not necessarily the address of the instruction
@@ -147,6 +155,28 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
+#ifdef VM
+  cur = thread_current ();
+
+  if (not_present)
+    {
+      if (vmm_handle_not_present (fault_addr))
+        return;
+      if (user && vmm_grow_stack (fault_addr, f->esp))
+        return;
+      else if (!user && vmm_grow_stack (fault_addr, cur->esp_before_syscall))
+        return;
+    }
+
+  if (user)
+    process_trigger_exit (-1);
+  else if (fault_addr < PHYS_BASE)
+    {
+      f->eip = (void (*) (void))f->eax;
+      f->eax = 0xffffffff;
+      return;
+    }
+#else
   /* Handle illegal memory access of user space code. */
   if (user)
     process_trigger_exit (-1);
@@ -158,6 +188,7 @@ page_fault (struct intr_frame *f)
       f->eax = -1;
       return;
     }
+#endif
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
