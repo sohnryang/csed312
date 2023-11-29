@@ -147,7 +147,7 @@ vmm_remove_mapping (struct mmap_info *info)
   struct thread *cur;
 
   cur = thread_current ();
-  pagedir_clear_page (cur->pagedir, info->upage);
+  pagedir_clear_page (info->pd, info->upage);
   hash_delete (&cur->mmaps, &info->map_elem);
   mmap_info_destruct (&info->map_elem, NULL);
 }
@@ -172,13 +172,10 @@ vmm_lookup_frame (void *upage)
 bool
 vmm_activate_frame (struct frame *frame, void *kpage)
 {
-  struct thread *cur;
   struct list_elem *el;
   struct mmap_info *info;
   bool read_from_file;
   size_t zero_bytes;
-
-  cur = thread_current ();
 
   frame->kpage = kpage;
   if (frame->is_swapped_out)
@@ -188,8 +185,7 @@ vmm_activate_frame (struct frame *frame, void *kpage)
            el != list_end (&frame->mappings); el = list_next (el))
         {
           info = list_entry (el, struct mmap_info, elem);
-          if (!pagedir_set_page (cur->pagedir, info->upage, kpage,
-                                 info->writable))
+          if (!pagedir_set_page (info->pd, info->upage, kpage, info->writable))
             return false;
         }
     }
@@ -200,8 +196,7 @@ vmm_activate_frame (struct frame *frame, void *kpage)
            el != list_end (&frame->mappings); el = list_next (el))
         {
           info = list_entry (el, struct mmap_info, elem);
-          if (!pagedir_set_page (cur->pagedir, info->upage, kpage,
-                                 info->writable))
+          if (!pagedir_set_page (info->pd, info->upage, kpage, info->writable))
             return false;
           if (info->file != NULL)
             {
@@ -274,9 +269,9 @@ vmm_deactivate_frame (struct frame *frame)
       info = list_entry (el, struct mmap_info, elem);
       readonly &= !info->writable;
       exe_mapping |= info->exe_mapping;
-      pagedir_clear_page (cur->pagedir, info->upage);
+      pagedir_clear_page (info->pd, info->upage);
       if (info->file != NULL && !info->exe_mapping
-          && pagedir_is_dirty (cur->pagedir, info->upage))
+          && pagedir_is_dirty (info->pd, info->upage))
         {
           ASSERT (!written_to_file);
 

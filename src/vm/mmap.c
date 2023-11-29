@@ -51,7 +51,12 @@ mmap_info_destruct (struct hash_elem *el, void *aux UNUSED)
 void
 mmap_init_anonymous (struct mmap_info *info, void *upage, bool writable)
 {
+  struct thread *cur;
+
+  cur = thread_current ();
+
   info->upage = upage;
+  info->pd = cur->pagedir;
   info->file = NULL;
   info->writable = writable;
   info->exe_mapping = false;
@@ -65,7 +70,12 @@ mmap_init_file_map (struct mmap_info *info, void *upage, struct file *file,
                     bool writable, bool exe_mapping, off_t offset,
                     uint32_t size)
 {
+  struct thread *cur;
+
+  cur = thread_current ();
+
   info->upage = upage;
+  info->pd = cur->pagedir;
   info->file = file;
   info->writable = writable;
   info->exe_mapping = exe_mapping;

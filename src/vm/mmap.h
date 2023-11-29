@@ -15,6 +15,7 @@
 struct mmap_info
 {
   void *upage;       /* User page the file is mapped to. */
+  void *pd;          /* Pointer to page directory. */
   struct file *file; /* Pointer to mapped file. Set to NULL if the mapping is
                         anonymous. */
 
