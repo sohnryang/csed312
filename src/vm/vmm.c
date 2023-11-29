@@ -259,12 +259,10 @@ vmm_handle_not_present (void *fault_addr)
 void
 vmm_deactivate_frame (struct frame *frame)
 {
-  struct thread *cur;
   struct list_elem *el;
   struct mmap_info *info;
   bool written_to_file, readonly, exe_mapping;
 
-  cur = thread_current ();
   if (frame->is_stub || frame->is_swapped_out || frame->kpage == NULL)
     return;
 
