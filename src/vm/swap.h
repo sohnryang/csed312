@@ -5,6 +5,9 @@
 
 void swap_init (void);
 
+void swap_acquire_lock (void);
+void swap_release_lock (void);
+
 void swap_register_frame (struct frame *);
 void swap_unregister_frame (struct frame *);
 

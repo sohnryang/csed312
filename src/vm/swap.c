@@ -44,25 +44,33 @@ swap_init (void)
   swap_block_map = bitmap_create (swap_size);
 }
 
+void
+swap_acquire_lock (void)
+{
+  lock_acquire (&swap_lock);
+}
+
+void
+swap_release_lock (void)
+{
+  lock_release (&swap_lock);
+}
+
+void swap_release_lock (void);
+
 /* Register frame to swap manager. */
 void
 swap_register_frame (struct frame *frame)
 {
-  lock_acquire (&swap_lock);
-
   list_push_back (&active_frames, &frame->global_elem);
   if (clock_hand == NULL)
     clock_hand = &frame->global_elem;
-
-  lock_release (&swap_lock);
 }
 
 /* Unregister frame from swap manager. */
 void
 swap_unregister_frame (struct frame *frame)
 {
-  lock_acquire (&swap_lock);
-
   if (clock_hand == &frame->global_elem)
     {
       clock_hand = list_next (clock_hand);
@@ -70,8 +78,6 @@ swap_unregister_frame (struct frame *frame)
         clock_hand = NULL;
     }
   list_remove (&frame->global_elem);
-
-  lock_release (&swap_lock);
 }
 
 static bool
@@ -103,8 +109,6 @@ swap_find_victim (void)
 {
   ASSERT (swap_present);
 
-  lock_acquire (&swap_lock);
-
   if (list_empty (&active_frames))
     return NULL;
 
@@ -115,8 +119,6 @@ swap_find_victim (void)
       if (clock_hand == list_end (&active_frames))
         clock_hand = list_begin (&active_frames);
     }
-
-  lock_release (&swap_lock);
 
   return list_entry (clock_hand, struct frame, global_elem);
 }
@@ -130,8 +132,6 @@ swap_write_frame (struct frame *frame)
 
   ASSERT (swap_present);
 
-  lock_acquire (&swap_lock);
-
   sector = bitmap_scan_and_flip (swap_block_map, 0, SECTORS_PER_PAGE, false);
   ASSERT (sector != BITMAP_ERROR);
   frame->swap_sector = sector;
@@ -139,8 +139,6 @@ swap_write_frame (struct frame *frame)
   for (i = 0; i < SECTORS_PER_PAGE; i++)
     block_write (swap_block_dev, sector + i,
                  (uint8_t *)frame->kpage + i * BLOCK_SECTOR_SIZE);
-
-  lock_release (&swap_lock);
 }
 
 /* Read frame from swap space. */
@@ -151,28 +149,20 @@ swap_read_frame (struct frame *frame)
 
   ASSERT (swap_present);
 
-  lock_acquire (&swap_lock);
-
   ASSERT (
       bitmap_count (swap_block_map, frame->swap_sector, SECTORS_PER_PAGE, true)
       == SECTORS_PER_PAGE);
   for (i = 0; i < SECTORS_PER_PAGE; i++)
     block_read (swap_block_dev, frame->swap_sector + i,
                 (uint8_t *)frame->kpage + i * BLOCK_SECTOR_SIZE);
-
-  lock_release (&swap_lock);
 }
 
 /* Free frame from swap space. */
 void
 swap_free_frame (struct frame *frame)
 {
-  lock_acquire (&swap_lock);
-
   if (swap_present)
     bitmap_set_multiple (swap_block_map, frame->swap_sector, SECTORS_PER_PAGE,
                          false);
   frame->swap_sector = -1;
-
-  lock_release (&swap_lock);
 }

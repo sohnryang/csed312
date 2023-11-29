@@ -52,6 +52,8 @@ vmm_destroy (void)
   struct list_elem *el;
   struct frame *frame;
 
+  swap_acquire_lock ();
+
   cur = thread_current ();
   while (!list_empty (&cur->frames))
     {
@@ -66,6 +68,8 @@ vmm_destroy (void)
         swap_free_frame (frame);
       free (frame);
     }
+
+  swap_release_lock ();
 
   hash_destroy (&cur->mmaps, mmap_info_destruct);
 }
@@ -227,11 +231,14 @@ vmm_handle_not_present (void *fault_addr)
 {
   void *kpage, *upage;
   struct frame *frame, *victim;
+  bool success;
 
   upage = pg_round_down (fault_addr);
   frame = vmm_lookup_frame (upage);
   if (frame == NULL)
     return false;
+
+  swap_acquire_lock ();
 
   kpage = palloc_get_page (PAL_USER);
   if (kpage == NULL)
@@ -241,10 +248,11 @@ vmm_handle_not_present (void *fault_addr)
       kpage = palloc_get_page (PAL_ZERO);
     }
 
-  if (!vmm_activate_frame (frame, kpage))
-    return false;
+  success = vmm_activate_frame (frame, kpage);
 
-  return true;
+  swap_release_lock ();
+
+  return success;
 }
 
 /* Write frame content to disk. */
