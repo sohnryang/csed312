@@ -2,14 +2,14 @@ If:
   PathMatch: [src/threads/.*, src/tests/threads/.*, src/devices/.*]
 
 CompileFlags:
-  CompilationDatabase: src/userprog
+  CompilationDatabase: src/vm
 
 ---
 If:
   PathMatch: [src/userprog/.*, src/tests/userprog/.*]
 
 CompileFlags:
-  CompilationDatabase: src/userprog
+  CompilationDatabase: src/vm
 
 ---
 If:
