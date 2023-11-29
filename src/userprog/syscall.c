@@ -18,6 +18,13 @@
 #include "userprog/process.h"
 #include "userprog/usermem.h"
 
+#ifdef VM
+#include "threads/malloc.h"
+#include "user/syscall.h"
+#include "vm/mmap.h"
+#include "vm/vmm.h"
+#endif
+
 static void syscall_handler (struct intr_frame *);
 
 typedef int syscall_func (void *esp);
@@ -34,6 +41,11 @@ static syscall_func write_;
 static syscall_func seek_;
 static syscall_func tell_;
 static syscall_func close_;
+
+#ifdef VM
+static syscall_func mmap_;
+static syscall_func munmap_;
+#endif
 
 #define FILE_IO_BUFSIZE 1024
 
@@ -59,9 +71,13 @@ static void
 syscall_handler (struct intr_frame *f)
 {
   int syscall_id;
-  syscall_func *syscall_table[]
-      = { halt_,     exit_, exec_,  wait_, create_, remove_, open_,
-          filesize_, read_, write_, seek_, tell_,   close_ };
+  syscall_func *syscall_table[] = {
+    halt_,     exit_,   exec_,  wait_, create_, remove_, open_,
+    filesize_, read_,   write_, seek_, tell_,   close_,
+#ifdef VM
+    mmap_,     munmap_,
+#endif
+  };
 
   void *esp = f->esp;
 
@@ -72,7 +88,7 @@ syscall_handler (struct intr_frame *f)
 #endif
 
   pop_arg (int, syscall_id, esp);
-  if (syscall_id < 0 || syscall_id >= 13)
+  if (syscall_id < 0 || syscall_id >= 15)
     process_trigger_exit (-1);
 
   f->eax = syscall_table[syscall_id](esp);
@@ -434,3 +450,68 @@ close_ (void *esp)
 
   return 0;
 }
+
+#ifdef VM
+static int
+mmap_ (void *esp)
+{
+  int fd;
+  void *addr;
+  struct file_descriptor *fd_ctx;
+  struct file *file_reopened;
+  struct mmap_user_block *block;
+  mapid_t id;
+  bool success;
+  struct thread *cur;
+
+  pop_arg (int, fd, esp);
+  pop_arg (void *, addr, esp);
+
+  if (addr == NULL)
+    return -1;
+
+  fd_ctx = process_get_fd (fd);
+  if (fd_ctx == NULL || fd_ctx->keyboard_in || fd_ctx->screen_out)
+    return -1;
+
+  block = malloc (sizeof (struct mmap_user_block));
+  id = vmm_get_free_mapid ();
+
+  thread_fs_lock_acquire ();
+  file_reopened = file_reopen (fd_ctx->file);
+  mmap_init_user_block (block, id, file_reopened);
+  success = vmm_setup_user_block (block, addr);
+  thread_fs_lock_release ();
+
+  if (!success)
+    {
+      free (block);
+      return -1;
+    }
+
+  cur = thread_current ();
+  list_insert_ordered (&cur->mmap_blocks, &block->elem,
+                       mmap_user_block_compare_id, NULL);
+
+  return id;
+}
+
+static int
+munmap_ (void *esp)
+{
+  mapid_t id;
+  struct mmap_user_block *block;
+
+  pop_arg (mapid_t, id, esp);
+
+  block = vmm_get_mmap_user_block (id);
+  if (block == NULL)
+    process_trigger_exit (-1);
+
+  thread_fs_lock_acquire ();
+  vmm_cleanup_user_block (block);
+  thread_fs_lock_release ();
+
+  return 0;
+}
+#endif
