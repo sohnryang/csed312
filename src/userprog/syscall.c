@@ -64,11 +64,22 @@ syscall_handler (struct intr_frame *f)
           filesize_, read_, write_, seek_, tell_,   close_ };
 
   void *esp = f->esp;
+
+#ifdef VM
+  struct thread *cur = thread_current ();
+
+  cur->esp_before_syscall = f->esp;
+#endif
+
   pop_arg (int, syscall_id, esp);
   if (syscall_id < 0 || syscall_id >= 13)
     process_trigger_exit (-1);
 
   f->eax = syscall_table[syscall_id](esp);
+
+#ifdef VM
+  cur->esp_before_syscall = NULL;
+#endif
 }
 
 /* Halt the system. */
