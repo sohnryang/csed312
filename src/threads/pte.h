@@ -117,4 +117,13 @@ pte_get_page (uint32_t pte)
   return ptov (pte & PTE_ADDR);
 }
 
+#ifdef VM
+/* Create user stub page. */
+static inline uint32_t
+pte_create_user_stub (bool writable)
+{
+  return (writable ? PTE_W : 0) | PTE_U;
+}
+#endif
+
 #endif /* threads/pte.h */
