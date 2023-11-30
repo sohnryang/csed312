@@ -155,6 +155,10 @@ swap_read_frame (struct frame *frame)
   for (i = 0; i < SECTORS_PER_PAGE; i++)
     block_read (swap_block_dev, frame->swap_sector + i,
                 (uint8_t *)frame->kpage + i * BLOCK_SECTOR_SIZE);
+
+  bitmap_set_multiple (swap_block_map, frame->swap_sector, SECTORS_PER_PAGE,
+                       false);
+  frame->swap_sector = -1;
 }
 
 /* Free frame from swap space. */
