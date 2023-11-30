@@ -245,7 +245,7 @@ vmm_handle_not_present (void *fault_addr)
     {
       victim = swap_find_victim ();
       vmm_deactivate_frame (victim);
-      kpage = palloc_get_page (PAL_ZERO);
+      kpage = palloc_get_page (PAL_USER);
     }
 
   success = vmm_activate_frame (frame, kpage);
