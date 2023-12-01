@@ -2,7 +2,9 @@
 
 ## Solution
 
-### Introducing Virtual Memory
+### Introducing Virtual Memory on PintOS
+
+#### New structures
 
 이번 프로젝트에서 구현한 Virtual Memory는 프로세스 별로 서로 다른 Virtual Address에서 Physical Address로의 Translation을 가져야 한다.  `threads/thread.h`에서 각 프로세스가 가져야 할 Frame Table, Mapping Table을 정의하였다. 해당 Table들을 구현하기 위해 `list` 자료구조를 사용했다.
 
@@ -45,6 +47,67 @@ vmm_init (void)
 }
 ```
 
+##### `frame`
+
+Process의 `struct list frames`와 관계된 구조체이다. `frame->elem`을 `thread->frames`에 삽입하여 프로세스에 소속된 `frame`을 관리하며, 멤버로는 다음이 있다.
+
+* `void *kpage`
+  * 할당받은 Physical Memory를 향한 Pointer이다.
+* `bool is_stub` 
+* `bool is_swapped_out` / `block_sector_t swap_sector`
+  * Page Swapping이 일어난 경우를 추적하기 위해 존재하는 멤버들로, 해당 Frame이 Swapped-out 되었는지를 저장하고, Swapped-out이 일어난 경우 Back storage device의 어떤 Block에 존재하는지 기록한다. (Physical memory에 존재하는 경우 `swap_sector`를 `-1`로 유지한다.)
+* `struct list mappings` 
+  * 해당 Physical Memory의 Physical Address와, User가 접근하는 Virtual Address의 Translation을 기록하기 위한 구조체인 `mmap_info`들을 삽입한다.
+* `struct list_elem elem` / `struct list_elem global_elem`
+  * Process별로 `thread->frames`에 삽입될 `elem`과, 현재 Physical Memory에 올라와 있는 모든 Frame을 관리하기 위해 전역적으로 정의된 `struct list active_frames`에 삽입될 원소 `global_elem`이다.
+
+##### `mmap_info`
+
+Frame의 `struct list mappings`와 관계된 구조체이다. `mmap_info->elem`을 `frame->mappings`에 삽입하여 Frame의 Memory Mapping을 나타내고, 프로세스 별로 Memory mapping의 중복을 없애고 관리하기 위해 `mmap_info->map_elem`을 `thread->mmaps`에 삽입한다. 멤버는 다음과 같다.
+
+* `void upage`
+  * User가 접근하는 Virtual Address의 Offset 부분을 제외한, Virtual Page의 Address이다.
+* `struct hash_elem map_elem`
+  * Virtual Address에서 Physical Address로의 Translation을 Hash map을 통해 구현했다. 해당 Hash map은 각 Process 별로 존재 (`thread->mmaps`)하며, 각자 고유한 Translation을 중복 없이 관리하기 위하여 정의하였다.
+* `struct file *file` / `bool writable` / `bool exe_mapping` / `off_t offset` / `uint32_t mapped_size`
+  * Virtual Address에서 Physical Address로 Translation 시 Frame이 가지는 정보를 다루고 있는 Field들이며, Anonymous Page와 File-Mapped Page에 따라 초기화 방식 및 함수를 달리 하여 구현했다.
+* `struct list_elem elem` / `struct frame *frame`
+  * `frame->mappings`에 삽입하기 위한 Element와, 역으로 Element가 자신이 삽입된 Frame을 찾기 위해 가지고 있는 Frame pointer이다.
+* `struct list_elem chunk_elem`
+  * System Call에 의해 생성된 `mmap_usr_block`의 `mmap_usr_block->chunks`에 삽입하기 위한 Element이다.
+
+##### `mmap_usr_block`
+
+PintOS Project 2에서 OS의 기본적인 System call과 File System의 System call을 구현하였다. Project 3에선 Memory를 관리하기 위한 System Call인 `mmap_` 과 `munmap_`을 구현하였다. System call을 통해 할당된 Memory는 따로 `mmap_usr_block`이라는 구조체로 관리했으며, 해당 구조체는 `thread->mmap_blocks`에 `mmap_usr_block->elem`을 삽입함으로써 관계를 가진다. 멤버는 다음과 같다.
+
+* `mapid_t id`
+  * Process별로 정의된 `struct list mmap_blocks`  에 해당 `mmap_usr_block`을 삽입할 때, 다른 Block들과 구분하기 위한 ID이다.
+* `struct file* file`
+  * User가 `mmap_` System call의 인자로 넘긴 파일이다.
+* `struct list chunks`
+  * `mmap_usr_block`에 해당하는 Address Transition을 관리하기 위한 `struct mmap_info`를 저장하기 위한 자료구조이다.
+* `struct list_elem elem`
+  * `frame->mmap_blocks`에 삽입하기 위한 Elements이다.
+
+#### New System Calls
+
+##### `mmap_`
+
+2개의 인자를 받는 System Call로, 각각 File mapping을 위한 File descriptor `int fd`와 Mapping을 수행할 Virtual Address `void* addr`이다. 다음과 같이 System Call을 Handle하였다.
+
+* `mmap_usr_block`을 할당받고, 해당 `mmap_usr_block`에서 사용할 `map_id`를 결정한다.
+* (필요 시) `fd`에 해당하는 File 을 다시 열어서 Valid한 File Descriptor를 보장받은 상태에서 `mmap_init_user_block (block, id, file_reopened)`로 할당받은 Physical Memory에 File 정보를 등록한다.
+* `vmm_setup_user_block`으로 `addr`의 주소로 Address Translation이 이루어지도록 `mmap_info` 를 설정하고,  File map을 생성한다.
+* 현재 프로세스의 `thread->mmap_blocks`에 Memory Map을 수행한 `mmap_usr_block`의 `mmap_usr_block->elem`을 할당받은 `map_id`의 순서에 따라 삽입한다.
+
+##### `munmap_`
+
+`mmap_` System Call을 통해 할당받은 `mmap_usr_block`을 정리한다. 인자로 `mmap_usr_block` 의 Identificator인 `mapid_t id`이 주어진다. 다음과 같이 System Call을 Handle하였다.
+
+* `vmm_get_mmap_user_block (id)`를 통해 Memory Map에 해당하는 User block을 찾는다. 존재하지 않는 경우 `NULL`을 반환한다
+
+* 유효한 User Block이 주어진 경우, `vmm_cleanup_user_block`을 호출하여 해당 Block을 Unmap한다.
+
 ### Frame Table
 
 Process마다 Frame table이 있고, 이를 `threads/thread.h`에서 `struct thread`의 멤버로`struct list frames`를 도입하였다. 프로세스에 할당된 프레임을 관리하기 위한 구조체로, `frame`의 구조는 다음과 같다.
@@ -66,7 +129,24 @@ struct frame
 
 ```
 
-해당 Frame은 
+#### Initialization
+
+해당 `struct frame` 은 `vm/frame.c`의 `frame_init`에서 초기화된다.
+
+* User page `kpage` 를 `NULL`로 초기화한다. 해당 `kpage` 에 해당하는 Physical Address가 `frame`이다.
+* Process를 복사 시 `stub`을 통해 함수를 호출하게 되는데, 이 Stub Frame을 생성하기 위해  `is_stub`을 `true`로 초기화한다.
+* Swap 여부를 초기화한다. 생성 시 Frame이 Physical Memory에 올라가게 되기 때문에 `is_swapped_out`을 `false`로, `swap_sector`를 `-1`로 초기화한다.
+* `frame`의 Physical Address로의 Mapping은 `struct list`를 통해 구현하였으며, 이 list를 초기화한다.
+
+`frame_init`은 Frame이 새로 필요할 경우  `frame`을 할당할 때 마다 초기화되도록 구현하였다. 따라서 불릴 때의 함수 Call Stack을 추적하면 다음과 같이 File을 Memory-map하기 위해 / Anonymous Page를 만들 때 마다 호출이 된다.
+
+> `frame_init` 
+>
+> ​	→ `vmm_map_to_new_frame` 
+>
+> ​		→ `vmm_create_anonymous` 
+>
+> ​		→ `vmm_create_file_map`
 
 ### Lazy Loading
 
@@ -74,26 +154,29 @@ struct frame
 
 ### Stack Growth
 
+처음에 Process가 시작할 때 Stack은 `userprog/process.c`의 `load` 함수에서 `if (!setup_stack (esp))`와 같은 형태로 Stack을 생성했었다. Project 3에서 Virtual Memory를 도입하면서, 해당 `setup_stack` 함수를 `vmm_create_anonymous`로 Stack 영역을 생성하였다.
+
 기존의 `userprog/exception.c`에 있는 Page Fault Handler를 수정해서 Stack이 자랄 때 마다 새로운 Page를 할당하도록 구현한다. Page를 할당해야 하는 경우의 조건을 만족시키는 경우에만 할당하며 그 경우는 다음과 같다. Address에 해당하는 Stack 영역이 Physical Memory 상에 존재하지 않는 상태에서 호출할 경우 해당 Stack 영역을 위한 Page를 할당 시도하고, 재실행을 해야 한다. 순전히 Invalid한 Virtual Address에 접근하는 경우를 제외해야 한다.
 
 해당 Address의 Stack 영역이 Physical Memory에 존재하지 않는 경우는 다음의 두 가지 경우가 있을 것이다.
 
-* **한 번도 할당되지 않은 영역이었던 경우** - `vmm_grow_stack` in `vm/vmm.c`
+* 한 번도 할당되지 않은 영역이었던 경우 - `vmm_grow_stack` in `vm/vmm.c`
 
   해당 오류는 User 및 Kernel 양 측에서 발생 가능한 오류이다.
 
   * User의 경우 프로세스를 실행하면서 Stack에 Push하는 과정에서 Page를 넘기게 되는 경우 발생할 수  있다. 해당 Interrupt frame의 `sp` register를 관찰하여 Invalid한지 판단한다.
   * Kernel의 경우 System Call을 호출하고, System Call 내부에서 Page를 넘기게 되는 경우 발생할 수 있다. System Call이 호출되기 직전의 `sp` register를 관찰하여 Invalid한지 판단한다.
 
-  이 때 Exception을 Handle하기 위해, 정상적인 Memory Access의 판단과 그 때의 Handling은 다음과 같이 진행할 수 있다.
+  이 때 Exception을 Handle하기 위해, 정상적인 Memory Access의 판단과 그 때의 Handling은 다음과 같이 진행할 수 있다. 
 
-  * **Invalid한 Virtual Address에 접근하는 경우에는 미리 Invalid임을 반환**한다. 이 경우엔 Virtual Address로 Kernel Stack에 접근하는 경우와 기존의 Stack pointer보다 일정 거리 이상 떨어진 Virtual Address를 참조하는 경우가 있다.
-  * 그 외의 경우는 정말 Page가 할당되지 않아 발생한 Page Fault Exception이기에, 해당 Exception이 불리게 된 Address의 Page를 생성한다.
+  * Invalid한 Virtual Address에 접근하는 경우에는 미리 Invalid임을 반환한다. 이 경우엔 Virtual Address로 Kernel Stack에 접근하는 경우와 기존의 Stack pointer보다 일정 거리 이상 떨어진 Virtual Address를 참조하는 경우가 있다. 해당 조건을 `vmm_grow_stack`에서 Stack을 자랄 수 없는 경우로 반환하였다.
+  * 그 외의 경우는 정말 Page가 할당되지 않아 발생한 Page Fault Exception이기에, 해당 Exception이 불리게 된 Address의 Page를 생성한다.  `vmm_grow_stack`에서 `vmm_create_anonymous (pg_round_down (fault_addr), true)`로 Fault Address에 해당하는 Page를 생성했다.
 
-* **이미 할당 되었으나 Swap당해 Physical Memory에 없는 경우** - `vmm_handle_not_present` in `vm/vmm.c`
+* 이미 할당 되었으나 Swap당해 Physical Memory에 없는 경우 - `vmm_handle_not_present` in `vm/vmm.c`
+  
   * 이 경우 Disk에서 해당 Address를 포함하는 Page를 Swap-in 하여 Physical Memory에 올린다. 이 과정에서 다른 Frame이 Evict당할 수 있다. 자세한 내용은 [Swap Table](#Swap-Table)에서 서술하였다.
 
-양쪽의 경우 모두 Physical Memory에 다시 Frame을 올리고, Page Fault Exception이 발생한 Instruction을 다시 실행한다.
+양쪽의 경우 모두 Physical Memory에 다시 Frame을 올리고, Page Fault Exception이 발생한 Instruction을 다시 실행한다는 공통점이 있다.
 
 ### File Memory Mapping
 
