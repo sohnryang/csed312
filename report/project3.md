@@ -78,7 +78,7 @@ Frame의 `struct list mappings`와 관계된 구조체이다. `mmap_info->elem`�
 
 ##### `mmap_usr_block`
 
-PintOS Project 2에서 OS의 기본적인 System call과 File System의 System call을 구현하였다. Project 3에선 Memory를 관리하기 위한 System Call인 `mmap_` 과 `munmap_`을 구현하였다. System call을 통해 할당된 Memory는 따로 `mmap_usr_block`이라는 구조체로 관리했으며, 해당 구조체는 `thread->mmap_blocks`에 `mmap_usr_block->elem`을 삽입함으로써 관계를 가진다. 멤버는 다음과 같다.
+PintOS Project 2에서 OS의 기본적인 System call과 File System의 System call을 구현하였다. Project 3에선 Memory를 관리하기 위한 System Call인 `mmap_` 과 `munmap_`을 구현하였다. System call을 통해 할당된 Memory는 따로 `mmap_usr_block`이라는 구조체로 관리했으며, 해당 구조체는 `thread->mmap_blocks`에 `mmap_usr_block->elem`을 삽입함으로써 Element를 등록한다. 멤버는 다음과 같다.
 
 * `mapid_t id`
   * Process별로 정의된 `struct list mmap_blocks`  에 해당 `mmap_usr_block`을 삽입할 때, 다른 Block들과 구분하기 위한 ID이다.
@@ -102,7 +102,7 @@ PintOS Project 2에서 OS의 기본적인 System call과 File System의 System c
 
 ##### `munmap_`
 
-`mmap_` System Call을 통해 할당받은 `mmap_usr_block`을 정리한다. 인자로 `mmap_usr_block` 의 Identificator인 `mapid_t id`이 주어진다. 다음과 같이 System Call을 Handle하였다.
+`mmap_` System Call을 통해 할당받은 `mmap_usr_block`을 정리한다. 인자로 `mmap_usr_block` 의 Identifier인 `mapid_t id`이 주어진다. 다음과 같이 System Call을 Handle하였다.
 
 * `vmm_get_mmap_user_block (id)`를 통해 Memory Map에 해당하는 User block을 찾는다. 존재하지 않는 경우 `NULL`을 반환한다
 
@@ -138,17 +138,34 @@ struct frame
 * Swap 여부를 초기화한다. 생성 시 Frame이 Physical Memory에 올라가게 되기 때문에 `is_swapped_out`을 `false`로, `swap_sector`를 `-1`로 초기화한다.
 * `frame`의 Physical Address로의 Mapping은 `struct list`를 통해 구현하였으며, 이 list를 초기화한다.
 
-`frame_init`은 Frame이 새로 필요할 경우  `frame`을 할당할 때 마다 초기화되도록 구현하였다. 따라서 불릴 때의 함수 Call Stack을 추적하면 다음과 같이 File을 Memory-map하기 위해 / Anonymous Page를 만들 때 마다 호출이 된다.
+`frame_init`은 Frame이 새로 필요할 경우  `frame`을 할당할 때 마다 초기화되도록 구현하였다. 다음과 같은 Function Call을 통해 `frame_init`이 불리게 된다.
 
-> `frame_init` 
->
-> ​	→ `vmm_map_to_new_frame` 
->
-> ​		→ `vmm_create_anonymous` 
->
-> ​		→ `vmm_create_file_map`
+* User의 System Call 등으로 `vm/vmm.c`의 `vmm_setup_user_block`이 불린 경우 User의 Virtual Address를 기준으로 `vmm_create_fill_map`이 불리며,  Stack을 생성 (`userprog/process.c`의 `setup_stack`)과 성장(`vm/vmm.c`의 `vmm_grow_stack`)시 어떤 Process에도 귀속되지 않은 Anonymous Page를 할당받기 위해 `vmm_create_anonymous`가 호출된다.
+
+* `vmm_create_file_map` (File-mapped Page) 혹은 `vmm_create_anonymous`에서 (Anonymous Page) `vmm_map_to_new_frame`이 호출된다.
+
+  * 해당 함수의 인자로 `mmap_init_file_map`(File-mapped Page)와 `mmap_init_anonymous` (Anonymous Page)에서 생성된 Physical Address Translation Data를 전달한다.
+
+* `vmm_map_to_new_frame`을 File-mapped Page 및 Anonymous Page에서 모두 호출하게 되며, 여기서 Frame을 할당받고 생성된 Frame을 `frame_init`을 통해 초기화하게 된다. 
+
+  이후 Call Stack을 통해 전달된 Address Translation (`struct mmap_info *info`)를 전달하고, 현재 Process와 Frame의 각각 `mmap_info->elem`과 `frame->elem`을 삽입하여 List의 원소로써 등록한다.
 
 ### Lazy Loading
+
+Segment Load는 `userprog/process.c`의 `load_segment` 함수에서 이루어진다. PintOS Project 2에서 구현된 내용에선 직접 `file_read`를 사용하여 한 번에 Load가 이루어 진다. 이를 Lazy Load를 구현하기 위해, File Map만을 생성하였다. `load_segment` 함수가 호출되었을 때 함수의 Call Stack은 다음과 같이 진행될 것이다.
+
+* `userprog/process.c`의 `load_segment`
+  * `#ifdef VM ~ #else`에 의해 전처리된 `vmm_create_file_map`이 호출된다.
+* `vm/vmm.c`의 `vmm_create_file_map`
+* `vm/mmap.c`의 `mmap_init_file_map`이 호출된다.
+  * 해당 함수는 인자로 주어진 `struct mmap_info*`에 File mapping에 대한 정보를 기록하는 함수이다.
+
+실제로 Loading은 Address에 접근했을 경우 일어나며, 처음엔 Invalid Address로의 접근이기 때문에 Page Fault Handler에서 Handle할 수 있다. Page Fault Handler의 호출로 의해 Load가 불리는 과정은 다음과 같다.
+
+* `userprog/exception.c`의 `page_fault`에서 `not_present`가 참이 되며, `vmm_handle_not_present`를 호출한다.
+* `vm/vmm.c`에 `vmm_handle_not_present`는 Page Fault Address가 해당하는 Virtual Address Page를 생성한다. (이 과정에서 Physical Memory로 올릴 수 없는 경우 Eviction을 진행한다.) 이를 `vmm_activate_frame`을 호출하여 Page Fault Handler를 완성한다.
+* `vm/vmm.c`의 `vmm_activate_frame`이 호출되며, 인자로 전달된 Frame의 `frame->is_swapped_out`이 거짓인 경우의 Code를 실행하게 된다.
+  * `frame`과 관련 있는 `mmap_info->file`이 존재하기 때문에, 조건이 충족되는 경우의 `file_seek`와 `file_read`가 일어나도록 구현했다. 이 부분에서 직접적인 Data의 Load가 이루어지게 된다.
 
 ### Supplemental Page Table
 
@@ -249,18 +266,6 @@ Eviction Frame을 선정하기 위해 Clock Algorithm을 사용했다. Clock Alg
 * `swap_find_victim`은 `clock_hand`가 가리키는 Frame entry가 `check_and_clear_accessed_bit` 을 만족시키는 동안 `active_frames`를 처음부터 끝까지 순회한다.
 * `check_and_clear_accessed_bit`의 인자로  `struct frame *frame`이 주어진다. 인자로 주어진 해당 Frame의 Mapping list의 모든 Memory Map entry들의 User page의 Access bit를 확인하고, 다음 Clock이 돌 때까지 Access되었는지를 확인하기 위해 Access bit를 `false`로 설정한다.  대상이 되는 Entry의 Access bit를 모두 `OR` 한 값을 반환한다.
 * 따라서, `swap_find_victim` 의 `while` loop을 탈출할 때 `clock_hand`는 Victim으로 최근에 어떤 Memory mapped page도 Access되지 않은 Frame을 가리킬 것이며, 해당 frame의 pointer를 반환하였다.
-
-#### Page Swapping Sequence
-
-Frame이 없음을 Handling하고, 필요한 Frame을 Back Storage에서 Read하기 위해 더 이상 사용하지 않는 Frame을 선정하여 Back storage로 옮겨 필요한 Frame을 Read하는 전체적인 함수 호출 Sequence는 다음과 같이 정리할 수 있다.
-
-* Page Fault가 일어난다. `userprog/exception.c`의 Page Fault Handler `page_fault`에서 이를 Handle한다.
-  * Page Fault의 원인으로 현재 Physical Memory에 대상 Frame이 없는 경우 `vmm/vmm.c`의 `vmm_handle_not_present`가 호출된다.
-* `vmm_handle_not_present`에서 Page Fault가 발생한 Address의 Frame을 Physical Memory로 올리기 위해 Swap을 진행한다. (Swap 과정은 Critical section임으로 `swap_lock`에 접근하여 다른 프로세스의 swap을 막는다.)
-  * Swap-out할 Frame을 찾고, (`victim  = swap_find_victim()`), 해당 Frame을 Deactivate한다. (`vmm_deactivate_frame (victim)`)
-    * `vmm_deactivate_frame` 내에서 `swap_write_file`을 호출해 Back Storage에 Frame을 작성한다.
-  * Swap-in 하기 위해 `palloc_get_page`로 Frame 공간을 할당하고, `vmm_active_frame`을 호출한다.
-    * `vmm_activate_frame` 내에서 `swap_read_file`을 호출해 Back Storage로부터 Frame을 읽어 Physical Memory에 작성하여 Page Swap을 완료한다.
 
 ### On-Process Termination
 
