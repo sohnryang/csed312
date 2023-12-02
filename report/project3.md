@@ -321,3 +321,15 @@ PintOS Project 2에서 구현된 `userprog/process.c`의 `process_exit`는 Proce
 
 ## Discussion
 
+### Race Condition Between File System and Memory Mapping
+
+현재 구현에서 Process가 Lock을 최대로 Acquire할 수 있는 개수는 2개로, File System에 대한 `fs_lock`와 Swapping을 진행할때 사용하는 `swap_lock`이 있다. 결과는 모든 Virtual Address를 `mmap_info`를 통해 Mapping을 할당하고 부여했다. 두 Lock을 동시에 잡는 경우 Race Condition이 발생할 수 있으며, 그 이유를 추정하자면 다음과 같을 것이다.
+
+* Kernel에서 호출하는 Memory Mapping 과정에서는 `fs_lock`을 일절 Acquire하지 않으며, User가 명시적으로 System Call을 통해 `mmap_usr_block`을 통해 Memory Mapping과 Physical Frame을 만든 경우에만 `fs_lock`을 Acquire하고 Lock을 Hold하여 File system으로의 접근이 이루어지도록 구현하였으며, 기존 Pintos Project 2까지 구현하였던 File System Call (`read_`, `write_` 등)에서도 `fs_lock`을 Hold한다.
+* `swap_lock`은 Swapped-out 및 Swapped-in이 수행될 때 Lock을 Acquire하게 된다. 
+
+두 `lock`이 동시에 잡히는 경우는 다음과 같다. Page Fault Handler가 호출되었을 때, 새로운 프레임을 가득 찬 Supplemental Page Table에 삽입하고자 Eviction을 진행할 것이다 (`swap_lock`을 잡고 진행한다). 그러나 Eviction당할 Page가 `fs_lock`을 잡는 경우 - Swap 시점에서 `read_`나 `write_`를 호출하여 Swapped-in이나 Swapped-out의 대상 Frame과 Eviction의 대상인 File이 동일한 경우, `swap_lock`과 `fs_lock` 간의 Race Condition이 발생하게 될 것이며, 이러한 상황이 일어나는 경우는 프로세스의 실행 파일이 User의 System Call에 의해서 Memory-Mapped되는 경우를 대표적으로 예로 들 수 있다. (Swap victim과 File System lock이 같은 경우)
+
+다음과 같은 방법으로 해결하고자 했다.
+
+* Page Fault Handler에 `fs_lock`을 Hold하도록 구현한다. 만약 `vmm_page_not_present`가 호출되어 실횅되는 경우, 앞서 설명한 Race Condition을 이유로 인해 함수의 전 영역을 Critical Section으로 간주해야 했기 때문이다.
