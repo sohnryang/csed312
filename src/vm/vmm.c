@@ -239,6 +239,7 @@ vmm_handle_not_present (void *fault_addr)
     return false;
 
   swap_acquire_lock ();
+  thread_fs_lock_acquire ();
 
   kpage = palloc_get_page (PAL_USER);
   if (kpage == NULL)
@@ -250,6 +251,7 @@ vmm_handle_not_present (void *fault_addr)
 
   success = vmm_activate_frame (frame, kpage);
 
+  thread_fs_lock_release ();
   swap_release_lock ();
 
   return success;
