@@ -97,43 +97,43 @@ vmm_unlink_mapping_from_thread (struct thread *cur, struct mmap_info *info)
   return true;
 }
 
-/* Create a new frame and map `info` to it. */
-bool
-vmm_map_to_new_frame (struct mmap_info *info)
+/* Create a new frame for `cur`. */
+struct frame *
+vmm_create_frame (struct thread *cur)
 {
   struct frame *frame;
-  struct thread *cur;
-
-  cur = thread_current ();
-  if (hash_find (&cur->mmaps, &info->map_elem))
-    return false;
 
   frame = malloc (sizeof (struct frame));
   if (frame == NULL)
-    return false;
+    return NULL;
   frame_init (frame);
 
-  list_push_back (&frame->mappings, &info->elem);
-  info->frame = frame;
   list_push_back (&cur->frames, &frame->elem);
-  hash_insert (&cur->mmaps, &info->map_elem);
-
-  return install_page_stub (info->upage, info->writable);
+  return frame;
 }
 
-bool
+/* Destroy a frame. */
+void
+vmm_destroy_frame (struct frame *frame)
+{
+  list_remove (&frame->elem);
+  free (frame);
+}
+
+/* Map `info` to `frame`. */
+void
+vmm_map_to_frame (struct mmap_info *info, struct frame *frame)
+{
+  list_push_back (&frame->mappings, &info->elem);
+  info->frame = frame;
+}
+
+/* Map `info` from its frame. */
+void
 vmm_unmap_from_frame (struct mmap_info *info)
 {
-  struct thread *cur;
-
-  cur = thread_current ();
-  if (!hash_find (&cur->mmaps, &info->map_elem))
-    return false;
   list_remove (&info->elem);
-  hash_delete (&cur->mmaps, &info->map_elem);
-
-  pagedir_clear_page (info->pd, info->upage);
-  return true;
+  info->frame = NULL;
 }
 
 /* Create an anonymous mapping for `upage`. */
@@ -141,6 +141,8 @@ struct mmap_info *
 vmm_create_anonymous (void *upage, bool writable)
 {
   struct mmap_info *info;
+  struct frame *frame;
+  struct thread *cur;
 
   ASSERT (pg_ofs (upage) == 0);
 
@@ -149,11 +151,21 @@ vmm_create_anonymous (void *upage, bool writable)
     return NULL;
   mmap_init_anonymous (info, upage, writable);
 
-  if (!vmm_map_to_new_frame (info))
+  cur = thread_current ();
+  if (!vmm_link_mapping_to_thread (cur, info))
     {
       free (info);
       return NULL;
     }
+
+  frame = vmm_create_frame (cur);
+  if (frame == NULL)
+    {
+      free (info);
+      return NULL;
+    }
+
+  vmm_map_to_frame (info, frame);
   return info;
 }
 
@@ -163,6 +175,8 @@ vmm_create_file_map (void *upage, struct file *file, bool writable,
                      bool exe_mapping, off_t offset, uint32_t size)
 {
   struct mmap_info *info;
+  struct frame *frame;
+  struct thread *cur;
 
   ASSERT (pg_ofs (upage) == 0);
 
@@ -171,24 +185,22 @@ vmm_create_file_map (void *upage, struct file *file, bool writable,
     return NULL;
   mmap_init_file_map (info, upage, file, writable, exe_mapping, offset, size);
 
-  if (!vmm_map_to_new_frame (info))
+  cur = thread_current ();
+  if (!vmm_link_mapping_to_thread (cur, info))
     {
       free (info);
       return NULL;
     }
+
+  frame = vmm_create_frame (cur);
+  if (frame == NULL)
+    {
+      free (info);
+      return NULL;
+    }
+
+  vmm_map_to_frame (info, frame);
   return info;
-}
-
-/* Remove mapping info. */
-void
-vmm_remove_mapping (struct mmap_info *info)
-{
-  struct thread *cur;
-
-  cur = thread_current ();
-  pagedir_clear_page (info->pd, info->upage);
-  hash_delete (&cur->mmaps, &info->map_elem);
-  mmap_info_destruct (&info->map_elem, NULL);
 }
 
 /* Find page frame corresponding to `upage`. */
@@ -400,11 +412,13 @@ vmm_setup_user_block (struct mmap_user_block *block, void *upage)
   unsigned length, read_bytes, mmap_size, bytes_left;
   struct mmap_info *info;
   struct list_elem *el;
+  struct thread *cur;
 
   if (pg_ofs (upage) != 0)
     return false;
 
   length = file_length (block->file);
+  cur = thread_current ();
   for (read_bytes = 0; read_bytes < length; read_bytes += PGSIZE)
     {
       bytes_left = length - read_bytes;
@@ -418,8 +432,7 @@ vmm_setup_user_block (struct mmap_user_block *block, void *upage)
               el = list_pop_front (&block->chunks);
               info = list_entry (el, struct mmap_info, chunk_elem);
               vmm_unmap_from_frame (info);
-              free (info->frame);
-              free (info);
+              vmm_unlink_mapping_from_thread (cur, info);
             }
           return false;
         }
@@ -435,19 +448,21 @@ vmm_cleanup_user_block (struct mmap_user_block *block)
 {
   struct list_elem *el;
   struct mmap_info *info;
+  struct frame *frame;
+  struct thread *cur;
 
-  for (el = list_begin (&block->chunks); el != list_end (&block->chunks);
-       el = list_next (el))
-    {
-      info = list_entry (el, struct mmap_info, chunk_elem);
-      vmm_deactivate_frame (info->frame);
-    }
-
+  cur = thread_current ();
   while (!list_empty (&block->chunks))
     {
       el = list_pop_front (&block->chunks);
       info = list_entry (el, struct mmap_info, chunk_elem);
-      vmm_remove_mapping (info);
+      vmm_deactivate_frame (info->frame);
+
+      frame = info->frame;
+      vmm_unmap_from_frame (info);
+      vmm_unlink_mapping_from_thread (cur, info);
+      if (list_empty (&frame->mappings))
+        vmm_destroy_frame (frame);
     }
   list_remove (&block->elem);
   free (block);

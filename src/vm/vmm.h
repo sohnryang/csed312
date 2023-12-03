@@ -17,12 +17,14 @@ void vmm_destroy (void);
 bool vmm_link_mapping_to_thread (struct thread *, struct mmap_info *);
 bool vmm_unlink_mapping_from_thread (struct thread *, struct mmap_info *);
 
-bool vmm_map_to_new_frame (struct mmap_info *);
-bool vmm_unmap_from_frame (struct mmap_info *);
+struct frame *vmm_create_frame (struct thread *);
+void vmm_destroy_frame (struct frame *);
+
+void vmm_map_to_frame (struct mmap_info *, struct frame *);
+void vmm_unmap_from_frame (struct mmap_info *);
 struct mmap_info *vmm_create_anonymous (void *, bool);
 struct mmap_info *vmm_create_file_map (void *, struct file *, bool, bool, off_t,
                                        uint32_t);
-void vmm_remove_mapping (struct mmap_info *);
 
 struct frame *vmm_lookup_frame (void *);
 bool vmm_activate_frame (struct frame *, void *);
