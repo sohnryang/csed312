@@ -37,12 +37,10 @@ void
 mmap_info_destruct (struct hash_elem *el, void *aux UNUSED)
 {
   struct mmap_info *info;
-  struct thread *cur;
 
-  cur = thread_current ();
   info = hash_entry (el, struct mmap_info, map_elem);
 
-  pagedir_clear_page (cur->pagedir, info->upage);
+  pagedir_clear_page (info->pd, info->upage);
   list_remove (&info->elem);
   free (info);
 }
