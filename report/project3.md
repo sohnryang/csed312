@@ -333,3 +333,9 @@ PintOS Project 2에서 구현된 `userprog/process.c`의 `process_exit`는 Proce
 다음과 같은 방법으로 해결하고자 했다.
 
 * Page Fault Handler에 `fs_lock`을 Hold하도록 구현한다. 만약 `vmm_page_not_present`가 호출되어 실횅되는 경우, 앞서 설명한 Race Condition을 이유로 인해 함수의 전 영역을 Critical Section으로 간주해야 했기 때문이다.
+
+### Sharing & Copy-on-Write
+
+핀토스 공식 문서에서는 추가적으로 구현할 만한 기능으로 sharing을 제시하고 있다. 비록 시간적 여유 등의 이유로 이를 구현하지는 못했지만, 현재 설계에서 sharing을 구현하는 복잡도는 크지 않을 것으로 예상된다. 이미 현재 구현에는 리눅스의 object-based reverse mapping과 비슷한 설계를 따랐고, 한 page frame에 여러 virtual address가 사용되는 상황을 충분히 다룰 수 있다. 핀토스의 경우 새로운 프로세스를 생성하기 위해 `fork` system call 대신 `exec` system call을 사용하기 때문에, 실행 파일의 코드 영역을 공유하기 위해서는 같은 실행 파일에서 실행되는 프로세스를 식별해야 한다는 복잡도가 추가될 것이다. 이는 일종의 reference counting을 사용하여, 같은 파일에서 실행된 프로세스는 같은 file pointer를 사용하는 등의 방법으로 구현해야 할 것으로 보인다.
+
+좀 더 나아가, 현재 설계에서는 copy-on-write의 구현 복잡도 또한 그리 높지 않을 것으로 기대할 수 있다. `mmap_info` 구조체에 copy-on-write를 위해 잠시 read only 상태가 되었는지를 나타내는 플래그를 추가하고, page fault handler에서 이를 처리한다면 copy-on-write를 구현할 수 있다.
