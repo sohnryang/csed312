@@ -87,10 +87,7 @@ vmm_map_to_new_frame (struct mmap_info *info)
 
   frame = malloc (sizeof (struct frame));
   if (frame == NULL)
-    {
-      free (info);
-      return false;
-    }
+    return false;
   frame_init (frame);
 
   list_push_back (&frame->mappings, &info->elem);
