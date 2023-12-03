@@ -74,6 +74,29 @@ vmm_destroy (void)
   hash_destroy (&cur->mmaps, mmap_info_destruct);
 }
 
+/* Link `info` to thread `cur`. */
+bool
+vmm_link_mapping_to_thread (struct thread *cur, struct mmap_info *info)
+{
+  if (hash_find (&cur->mmaps, &info->map_elem))
+    return false;
+  hash_insert (&cur->mmaps, &info->map_elem);
+
+  return install_page_stub (info->upage, info->writable);
+}
+
+/* Unlink `info` from thread `cur`. */
+bool
+vmm_unlink_mapping_from_thread (struct thread *cur, struct mmap_info *info)
+{
+  if (!hash_find (&cur->mmaps, &info->map_elem))
+    return false;
+  hash_delete (&cur->mmaps, &info->map_elem);
+
+  pagedir_clear_page (info->pd, info->upage);
+  return true;
+}
+
 /* Create a new frame and map `info` to it. */
 bool
 vmm_map_to_new_frame (struct mmap_info *info)

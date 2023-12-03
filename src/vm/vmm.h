@@ -3,6 +3,7 @@
 
 #include "filesys/file.h"
 #include "filesys/off_t.h"
+#include "threads/thread.h"
 #include "user/syscall.h"
 #include "vm/frame.h"
 #include "vm/mmap.h"
@@ -12,6 +13,9 @@
 
 bool vmm_init (void);
 void vmm_destroy (void);
+
+bool vmm_link_mapping_to_thread (struct thread *, struct mmap_info *);
+bool vmm_unlink_mapping_from_thread (struct thread *, struct mmap_info *);
 
 bool vmm_map_to_new_frame (struct mmap_info *);
 bool vmm_unmap_from_frame (struct mmap_info *);
