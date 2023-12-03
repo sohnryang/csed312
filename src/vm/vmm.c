@@ -101,6 +101,21 @@ vmm_map_to_new_frame (struct mmap_info *info)
   return install_page_stub (info->upage, info->writable);
 }
 
+bool
+vmm_unmap_from_frame (struct mmap_info *info)
+{
+  struct thread *cur;
+
+  cur = thread_current ();
+  if (!hash_find (&cur->mmaps, &info->map_elem))
+    return false;
+  list_remove (&info->elem);
+  hash_delete (&cur->mmaps, &info->map_elem);
+
+  pagedir_clear_page (info->pd, info->upage);
+  return true;
+}
+
 /* Create an anonymous mapping for `upage`. */
 struct mmap_info *
 vmm_create_anonymous (void *upage, bool writable)
