@@ -376,6 +376,7 @@ vmm_setup_user_block (struct mmap_user_block *block, void *upage)
 {
   unsigned length, read_bytes, mmap_size, bytes_left;
   struct mmap_info *info;
+  struct list_elem *el;
 
   if (pg_ofs (upage) != 0)
     return false;
@@ -389,7 +390,14 @@ vmm_setup_user_block (struct mmap_user_block *block, void *upage)
                                   read_bytes, mmap_size);
       if (info == NULL)
         {
-          // TODO: add cleanup for mapped pages
+          while (!list_empty (&block->chunks))
+            {
+              el = list_pop_front (&block->chunks);
+              info = list_entry (el, struct mmap_info, chunk_elem);
+              vmm_unmap_from_frame (info);
+              free (info->frame);
+              free (info);
+            }
           return false;
         }
       list_push_back (&block->chunks, &info->chunk_elem);
