@@ -69,8 +69,11 @@ Process의 `struct list frames`와 관계된 구조체이다. `frame->elem`을 `
 
 Frame의 `struct list mappings`와 관계된 구조체이다. `mmap_info->elem`을 `frame->mappings`에 삽입하여 Frame의 Memory Mapping을 나타내고, 프로세스 별로 Memory mapping의 중복을 없애고 관리하기 위해 `mmap_info->map_elem`을 `thread->mmaps`에 삽입한다. 멤버는 다음과 같다.
 
-* `void upage`
+* `void *upage`
   * User가 접근하는 Virtual Address의 Offset 부분을 제외한, Virtual Page의 Address이다.
+* `void *pd`
+  * Page Directory를 가리키는 pointer이다.
+
 * `struct hash_elem map_elem`
   * Virtual Address에서 Physical Address로의 Translation을 Hash map을 통해 구현했다. 해당 Hash map은 각 Process 별로 존재 (`thread->mmaps`)하며, 각자 고유한 Translation을 중복 없이 관리하기 위하여 정의하였다.
 * `struct file *file` / `bool writable` / `bool exe_mapping` / `off_t offset` / `uint32_t mapped_size`
@@ -91,13 +94,13 @@ Frame의 `struct list mappings`와 관계된 구조체이다. `mmap_info->elem`�
 
 `frame_init`은 Frame이 새로 필요할 경우  `frame`을 할당할 때 마다 초기화되도록 구현하였다. 다음과 같은 Function Call을 통해 `frame_init`이 불리게 된다.
 
-* User의 System Call 등으로 `vm/vmm.c`의 `vmm_setup_user_block`이 불린 경우 User의 Virtual Address를 기준으로 `vmm_create_file_map`이 불리며,  Stack을 생성 (`userprog/process.c`의 `setup_stack`)과 성장(`vm/vmm.c`의 `vmm_grow_stack`)시 어떤 Process에도 귀속되지 않은 Anonymous Page를 할당받기 위해 `vmm_create_anonymous`가 호출된다.
+* User의 System Call 등으로 `vm/vmm.c`의 `vmm_setup_user_block`이 불린 경우 User의 Virtual Address를 기준으로 `vmm_create_file_map`이 불리며,  Stack을 생성 (`userprog/process.c`의 `setup_stack`)과 성장(`vm/vmm.c`의 `vmm_grow_stack`)시 어떤 Process에도 귀속되지 않은 Anonymous Page를 할당받기 위해 `vmm_create_anonymous`가 호출된다. 이 과정에서 `mmap_info`를 생성하는 데 오류가 생긴 경우 `mmap_info`의 이미 생긴 Chunk들을 모두 제거하여 메모리를 처음과 같은 상황으로 돌려놓고 실패를 반환한다.
 
-* `vmm_create_file_map` (File-mapped Page) 혹은 `vmm_create_anonymous`에서 (Anonymous Page) `vmm_map_to_new_frame`이 호출된다.
+* `vmm_create_file_map` (File-mapped Page) 혹은 `vmm_create_anonymous`에서 (Anonymous Page) `vmm_link_mapping_to_thread`이 호출된다.
 
   * 해당 함수의 인자로 `mmap_init_file_map`(File-mapped Page)와 `mmap_init_anonymous` (Anonymous Page)에서 생성된 Physical Address Translation Data를 전달한다.
 
-* `vmm_map_to_new_frame`을 File-mapped Page 및 Anonymous Page에서 모두 호출하게 되며, 여기서 Frame을 할당받고 생성된 Frame을 `frame_init`을 통해 초기화하게 된다. 
+* `vmm_link_mapping_to_thread`을 File-mapped Page 및 Anonymous Page에서 모두 호출하게 되며, 여기서 Frame을 할당받고 생성된 Frame을 `frame_init`을 통해 초기화하게 된다. 
 
   이후 Call Stack을 통해 전달된 Address Translation (`struct mmap_info *info`)를 전달하고, 현재 Process와 Frame의 각각 `mmap_info->elem`과 `frame->elem`을 삽입하여 List의 원소로써 등록한다.
 
@@ -112,21 +115,27 @@ Frame을 할당하고 메모리의 값을 읽어 오는 과정보다 선행되�
 * `vmm_create_anonymous`
   * Anonymous Page에 대한 `mmap_info`를 할당하고, `mmap_init_anonymous`를 통해 `mmap_info`의 값을 채운다.
   * `mmap_init_anonymous`에서 User Page의 Virtual Address Page Base와의 Mapping을 저장하며 (`info->upage = upage`), Mapped된 파일이 없음을 명시한다. (`info->file == NULL`, `info->exe_mapping = false`, `info->offset = 0`, `info->mapped_size = 0`)
+  * `vmm_link_mapping_to_thread`으로 해당 Address translation을 현재 Process에 등록한다.
+  * `vmm_create_frame`으로 Frame을 Allocate할당한다.
 * `vmm_create_file_map`
   * File-mapped Page에 대한 `mmap_info`를 할당하고, `mmap_init_file_map`을 통해 `mmap_info`의 값을 채운다.
   * `mmap_init_file_map`에서 User Page의 Virtual Address Page Base와의 Mapping을 저장하며 (`info->upage = upage`), Mapped된 파일 정보를 명시한다. (`info->file == file`, `info->exe_mapping = exe_mapping`,  `info_writeable = writable`, `info->offset = offset`, `info->mapped_size = size`)
     * `writable` 및 `exe_mapping`은 File property에 의존한다.
     * Page보다 File의 크기가 클 수 있으며, 이 때 File을 여러 개의 Page에 나누어 Mapping하기 위해 `offset` 및 `mapped_size`로써 각 페이지가 File에 Map된 Offset과 크기를 저장한다.
+  * `vmm_link_mapping_to_thread`으로 해당 Address translation을 현재 Process에 등록한다.
+  * `vmm_create_frame`으로 Frame을 Allocate할당한다.
 
-두 함수 모두 마지막으로 Frame을 할당 (`vmm_map_to_new_frame`)하여 File mapping 과정을 종료한다.
+두 함수 모두 마지막으로 Frame과 `mmap_info`를  Mapping(`vmm_map_to_frame`)하여 File mapping 과정을 종료한다.
 
 ##### Allocating Frame with Hash Management
 
-앞서 `vmm_create_anonymous` 및 `vmm_create_file_map`의 마지막에서 호출되는 함수로 `vmm_map_to_new_frame`이 있다. 해당 함수는 여러 Physical Page로의 Mapping을 관리할 객체인 Frame을 할당하고, Virtual Address와 Physical Address로의 Mapping을 내장된 Hash map을 통해 구현했다. 다음과 같은 동작을 한다.
+앞서 `vmm_create_anonymous` 및 `vmm_create_file_map`의 마지막에서 해당 과정이 진행되며, 크게 나누어 `mmap_info` 할당 및 초기화, 현재 Process에 `mmap_info`연결, `frame` 할당, `mmap_info`와 `frame` 연결으로 구성된다.
 
-* Frame table은 Process별로 정의된 객체이기 때문에, 현재 Memory map에서 겹치는 Hash가 존재하는지 (현재 해당 `mmap_info->map_elem`이 Hash되었는지) 검사한다.
-* 이후 Frame의 객체를 할당하고, 현재 Process로의 귀속과 Memory map information을 부여한다. Frame에 고유한 hash를 부여한다. (`hash_insert`)
-* 마지막으로 stub frame을 삽입하여 Allocation을 완료했다.
+* Virtual Address의 Page Base와 (File Memory map인 경우) File의 정보가 내장된 `mmap_info`Hash map의 Element를 할당하고, Anonymous Page 혹은 FIle-mapped page에 따라 달리 초기화를 진행한다.
+* `vmm_link_mapping_to_thread`를 사용하여 Hash collision이 일어나지 않는지 확인 후 Hash map에 삽입을 진행한다. 여기서 Stub Frame을 삽입한다.
+* Physical Address의 정보와 Physical Memory 상에서 정보의 저장 상황을 나타내는 `frame`을 `vmm_create_frame`을 통해 할당한다.
+
+* 이후 `frame`과 `mmap_info`를 `vmm_map_to_frame`을 사용하여 `mmap_info->elem`을 `frame->mappings`에 삽입하여 Mapping한다. 
 
 ##### Searching Frame Mapping
 
@@ -136,9 +145,9 @@ Frame을 할당하고 메모리의 값을 읽어 오는 과정보다 선행되�
 
 ##### Removing Frame Mapping
 
-`vmm_remove_mapping`에서 현재 Process의 `thread->mmaps`의 원소였던 `mmap_info->map_elem`을 제거한다. 또한, User가 `mmap_`의 System Call로 Mapping한 `pagedir`에 대해서 `pagedir_clear_page`를 수행하며, 마지막으로 `mmap_info` 자체를 제거한다.
+`vmm_unlink_mapping_from_thread`에서 현재 Process의 `thread->mmaps`의 원소였던 `mmap_info->map_elem`을 제거한다. 또한, User가 `mmap_`의 System Call로 Mapping한 `pagedir`에 대해서 `pagedir_clear_page`를 수행하며, 마지막으로 `mmap_info` 자체를 제거한다.
 
-해당 함수는 `munmap_` System Call을 호출했을 때 불리는 `vmm_cleanup_user_block`을 통해 호출되며, 자세한 내용은 [`munmap_`](#`munmap_`)에 서술하였다.
+해당 함수를 통해 User의 Memory map을 Clean-up 하기 때문에 `munmap_` System Call을 호출했을 때 불리는 `vmm_cleanup_user_block`통해 호출되고, `mmap_` System Call 호출 시의 Error Handling 시에도 호출된다. 자세한 내용은 [`munmap_`](#`munmap_`)에 서술하였다.
 
 ### Lazy Loading
 
@@ -153,8 +162,8 @@ Segment Load는 `userprog/process.c`의 `load_segment` 함수에서 이루어진
 실제로 Loading은 Address에 접근했을 경우 일어나며, 처음엔 Invalid Address로의 접근이기 때문에 Page Fault Handler에서 Handle할 수 있다. Page Fault Handler의 호출로 의해 Load가 불리는 과정은 다음과 같다.
 
 * `userprog/exception.c`의 `page_fault`에서 `not_present`가 참이 되며, `vmm_handle_not_present`를 호출한다.
-* `vm/vmm.c`에 `vmm_handle_not_present`는 Page Fault Address가 해당하는 Virtual Address Page를 생성한다. (이 과정에서 Physical Memory로 올릴 수 없는 경우 Eviction을 진행한다.) 이를 `vmm_activate_frame`을 호출하여 Page Fault Handler를 완성한다.
-* `vm/vmm.c`의 `vmm_activate_frame`이 호출되며, 인자로 전달된 Frame의 `frame->is_swapped_out`이 거짓인 경우의 Code를 실행하게 된다.
+* `vm/vmm.c`에 `vmm_handle_not_present`는 Page Fault Address가 해당하는 Virtual Address Page를 생성한다. (이 과정에서 Physical Memory로 올릴 수 없는 경우 Eviction을 진행한다.) 이를 `vmm_activate_frame`을 호출하여 Page Fault Handler를 완성한다. **해당 과정에서 `fs_lock`를 Acquire하였으며, Atomicity를 보장했다. 그 이유는 [Race Condition Between File System and Memory Mapping](#Race-Condition-Between-File-System-and-Memory-Mapping) 에서 자세히 서술했다.**
+* `vm/vmm.c`의 `vmm_activate_frame`이 호출되며, 인자로 전달된 Frame의 `frame->is_swapped_out`이 거짓인 경우의 Code를 실행하게 된다. **해당 과정 이후 `fs_lock`을 Release하여 Atomicity를 충족하였다.**
   * `frame`과 관련 있는 `mmap_info->file`이 존재하기 때문에, 조건이 충족되는 경우의 `file_seek`와 `file_read`가 일어나도록 구현했다. 이 부분에서 직접적인 Data의 Load가 이루어지게 된다.
 
 ##### `vmm_activate_frame`
@@ -237,14 +246,14 @@ PintOS Project 2에서 OS의 기본적인 System call과 File System의 System c
 * `vmm_get_mmap_user_block (id)`를 통해 `id`에 해당하는 `mmap_user_block`을 찾는다. 존재하지 않는 경우 `NULL`을 반환한다
 
 * 유효한 User Block이 주어진 경우, `vmm_cleanup_user_block`을 호출하여 해당 Block을 Un-map한다. **이 과정은 `fs_lock`을 통해 Atomicity를 보장하였다.**
-  * `vmm_cleanup_user_block`에서는 `mmap_usr_block->chunks`의 모든 Element (Page로 할당된 File의 Chunk)를 `vmm_deactivate_frame`을 통해 명시적으로 Swap-out을 진행했으며, 이후 `vmm_remove_mapping`으로 Address Translation 정보를 제거하고, 최종적으로 `mmap_user_block`을 Free하여 Memory의 Un-map을 완성하였다.
+  * `vmm_cleanup_user_block`에서는 `mmap_usr_block->chunks`의 모든 Element (Page로 할당된 File의 Chunk)를 `vmm_deactivate_frame`을 통해 명시적으로 Swap-out을 진행했으며, 이후 `vmm_unmap_from_frame`으로 `mmap_info->thread`  정보를 제거했으며, `vmm_unlink_mapping_from_thread`으로 Address Translation 정보를 제거하고, 최종적으로 `mmap_user_block`을 Free하여 Memory의 Un-map을 완성하였다.
 
 
 ### Swap Table
 
 #### Data Structure
 
-Swap을 구현하기 위해 정의한 Data Structure는 다음과 같다.
+Swap을 구현하기 위해 `vm/swap.c`에서 사용한 Data Structure와 그 역할은 다음과 같다.
 
 ```c
 static bool swap_present;
@@ -330,7 +339,7 @@ PintOS Project 2에서 구현된 `userprog/process.c`의 `process_exit`는 Proce
 
 두 `lock`이 동시에 잡히는 경우는 다음과 같다. Page Fault Handler가 호출되었을 때, 새로운 프레임을 가득 찬 Supplemental Page Table에 삽입하고자 Eviction을 진행할 것이다 (`swap_lock`을 잡고 진행한다). 그러나 Eviction당할 Page가 `fs_lock`을 잡는 경우 - Swap 시점에서 `read_`나 `write_`를 호출하여 Swapped-in이나 Swapped-out의 대상 Frame과 Eviction의 대상인 File이 동일한 경우, `swap_lock`과 `fs_lock` 간의 Race Condition이 발생하게 될 것이며, 이러한 상황이 일어나는 경우는 프로세스의 실행 파일이 User의 System Call에 의해서 Memory-Mapped되는 경우를 대표적으로 예로 들 수 있다. (Swap victim과 File System lock이 같은 경우)
 
-다음과 같은 방법으로 해결하고자 했다.
+다음과 같은 방법으로 해결하였다.
 
 * Page Fault Handler에 `fs_lock`을 Hold하도록 구현한다. 만약 `vmm_page_not_present`가 호출되어 실횅되는 경우, 앞서 설명한 Race Condition을 이유로 인해 함수의 전 영역을 Critical Section으로 간주해야 했기 때문이다.
 
